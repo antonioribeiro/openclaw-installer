@@ -1,0 +1,39 @@
+# Docker Compose for testing OpenClaw installation script locally
+# Works with OrbStack (has systemd support)
+
+services:
+  ubuntu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: openclaw-installer:latest
+    container_name: openclaw-installer
+    hostname: openclaw-installer
+    privileged: true
+    stdin_open: true
+    tty: true
+    cgroup: private
+    cgroup_parent: ""
+    network_mode: bridge
+    ports:
+      - "18790:18790"  # OpenClaw Web UI (via socat)
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - SYS_MODULE
+    security_opt:
+      - seccomp:unconfined
+    tmpfs:
+      - /run
+      - /run/lock
+      - /tmp
+    volumes:
+      # Mount the parent directory (repo root) to access the script
+      - ..:/mnt:rw
+      # Persist OpenClaw config and home directory
+      - ./.disk/home/.openclaw:/root/.openclaw:rw
+    restart: unless-stopped
+    stop_grace_period: 10s

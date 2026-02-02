@@ -1,0 +1,8 @@
+# Docker ignore file - excludes from container mount
+.disk/
+*.log
+.DS_Store
+node_modules/
+.env
+.git/
+.gitignore

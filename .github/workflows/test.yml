@@ -1,0 +1,79 @@
+name: Test Installation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          cd docker
+          docker compose build
+
+      - name: Start container
+        run: |
+          cd docker
+          docker compose up -d
+          echo "Waiting for systemd to be ready..."
+          sleep 15
+
+      - name: Run installation script
+        run: |
+          cd docker
+          docker compose exec -T ubuntu bash -c "cd /mnt && ./install.sh"
+
+      - name: Check OpenClaw installation
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "su - openclaw -c 'command -v openclaw && openclaw --version'"
+
+      - name: Check Node.js version
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "su - openclaw -c 'node --version' | grep 'v22'"
+
+      - name: Check Tailscale installation
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "command -v tailscale && tailscale version"
+
+      - name: Check Homebrew installation
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "su - openclaw -c 'eval \$(/home/linuxbrew/.linuxbrew/bin/brew shellenv bash) && brew --version'"
+
+      - name: Check Go installation
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "command -v go"
+
+      - name: Check UFW firewall
+        run: |
+          cd docker
+          docker compose exec ubuntu bash -c "ufw status | grep 'Status: active'"
+
+      - name: Display installation log
+        if: always()
+        run: |
+          cd docker
+          echo "=== Installation Log ==="
+          docker compose exec ubuntu cat /var/log/openclaw_install.log || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          cd docker
+          docker compose down -v
