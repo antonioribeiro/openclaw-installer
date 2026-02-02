@@ -37,6 +37,9 @@ fi
 # Add user bin to PATH for npm global installs
 export PATH="$HOME/.local/bin:$PATH"
 
+# Track whether gateway was running before installation (to restart after)
+GATEWAY_WAS_RUNNING=false
+
 # Source OS release info for version detection (needed by multiple functions)
 if [ -f /etc/os-release ]; then
     source /etc/os-release
@@ -108,7 +111,7 @@ show_error_and_exit() {
     local message="$*"
     echo ""
     echo -e "${RED}═══════════════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${RED}INSTALLATION FAILED${NC}"
+    echo -e "${RED}.  INSTALLATION FAILED${NC}"
     echo -e "${RED}═══════════════════════════════════════════════════════════════════════════════${NC}"
     echo ""
     echo -e "${RED}Error: $message${NC}"
@@ -159,7 +162,7 @@ pre_install_checks() {
     if [ "$EUID" -eq 0 ]; then
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}RUNNING AS ROOT - SETTING UP OPENCLAW USER${NC}"
+        echo -e "${YELLOW}.  RUNNING AS ROOT - SETTING UP OPENCLAW USER${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
 
@@ -251,6 +254,17 @@ pre_install_checks() {
         fi
     fi
 
+    # Stop OpenClaw gateway if running (to avoid file conflicts during update)
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    if systemctl --user is-active --quiet openclaw-gateway 2>/dev/null; then
+        echo ""
+        echo -e "${YELLOW}Stopping OpenClaw gateway for installation...${NC}"
+        systemctl --user stop openclaw-gateway 2>/dev/null || true
+        GATEWAY_WAS_RUNNING=true
+    else
+        GATEWAY_WAS_RUNNING=false
+    fi
+
     # Detect Ubuntu version
     if [ ! -f /etc/os-release ]; then
         step_failed "Cannot detect OS version"
@@ -277,7 +291,7 @@ update_system() {
     $SUDO apt update >>"$LOG_FILE" 2>&1
     DEBIAN_FRONTEND=noninteractive $SUDO apt upgrade -y >>"$LOG_FILE" 2>&1
 
-    local essential_packages="curl wget gnupg lsb-release ca-certificates iputils-ping git make unzip"
+    local essential_packages="curl wget gnupg lsb-release ca-certificates iputils-ping git make unzip jq"
     DEBIAN_FRONTEND=noninteractive $SUDO apt install -y $essential_packages >>"$LOG_FILE" 2>&1
 
     # Test: curl should work
@@ -375,7 +389,51 @@ configure_firewall() {
 }
 
 # ============================================================================
-# PHASE 5: INSTALL NODE.JS
+# PHASE 5: INSTALL GOOGLE CHROME
+# ============================================================================
+
+install_google_chrome() {
+    log_step "Installing Google Chrome for browser automation"
+
+    # Check if already installed
+    if [ -f /opt/google/chrome/google-chrome ]; then
+        step_done "Google Chrome already installed"
+        return 0
+    fi
+
+    # Download Google Chrome deb package
+    local chrome_deb="/tmp/google-chrome-stable_current_amd64.deb"
+    local chrome_url="https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb"
+
+    log_info "Downloading Google Chrome..."
+    if ! curl -fL "$chrome_url" -o "$chrome_deb" >>"$LOG_FILE" 2>&1; then
+        step_failed "Failed to download Google Chrome"
+    fi
+
+    # Install Google Chrome
+    log_info "Installing Google Chrome (this may take a few minutes)..."
+    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y "$chrome_deb" >>"$LOG_FILE" 2>&1
+
+    # Clean up deb file
+    rm -f "$chrome_deb"
+
+    # Create symlink for OpenClaw compatibility
+    if [ -f /opt/google/chrome/google-chrome ]; then
+        $SUDO ln -sf /opt/google/chrome/google-chrome /usr/bin/chromium-browser
+        log_info "Created symlink: /usr/bin/chromium-browser -> google-chrome"
+    fi
+
+    # Verify installation
+    if [ ! -f /opt/google/chrome/google-chrome ]; then
+        step_failed "Google Chrome installation failed"
+    fi
+
+    local chrome_version=$(/opt/google/chrome/google-chrome --version 2>/dev/null)
+    step_done "Google Chrome installed ($chrome_version)"
+}
+
+# ============================================================================
+# PHASE 7: INSTALL NODE.JS
 # ============================================================================
 
 install_nodejs() {
@@ -578,8 +636,62 @@ run_onboarding() {
         if systemctl --user list-unit-files 2>/dev/null | grep -q "openclaw-gateway.service"; then
             local instance_id
             instance_id=$(cat "$OPENCLAW_CONFIG_FILE" 2>/dev/null | jq -r '.instanceId // "unknown"' 2>/dev/null || echo "configured")
-            step_done "OpenClaw already configured (instance: $instance_id)"
-            return 0
+
+            # Check if running in interactive mode
+            if [ -t 0 ]; then
+                echo ""
+                echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                echo -e "${CYAN}.  OPENCLAW ALREADY CONFIGURED${NC}"
+                echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                echo ""
+                echo -e "  Instance: ${BOLD}$instance_id${NC}"
+                echo ""
+                echo -e "What would you like to do?"
+                echo -e "  ${GREEN}1${NC}) Keep existing config and restart gateway"
+                echo -e "  ${RED}2${NC}) Full re-onboarding ${RED}(deletes ALL configuration)${NC}"
+                echo ""
+                read -p "  Choice [1-2]: " -n 1 -r
+                echo ""
+                echo ""
+
+                case $REPLY in
+                    1)
+                        echo -e "${GREEN}Keeping existing config, gateway will be restarted...${NC}"
+                        return 0
+                        ;;
+                    2)
+                        echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo -e "${RED}.  WARNING: THIS WILL DELETE YOUR OPENCLAW CONFIGURATION${NC}"
+                        echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                        echo ""
+                        echo -e "  ${RED}• All channels will be removed${NC}"
+                        echo -e "  ${RED}• All settings will be reset${NC}"
+                        echo -e "  ${RED}• Your API keys and credentials will be deleted${NC}"
+                        echo ""
+                        echo -e "  Instance: ${BOLD}$instance_id${NC}"
+                        echo ""
+                        read -p "  Type '${BOLD}DELETE${NC}' to confirm: " -r
+                        echo ""
+                        if [ "$REPLY" = "DELETE" ]; then
+                            # Remove existing config to force re-onboarding
+                            rm -f "$OPENCLAW_CONFIG_FILE"
+                            rm -rf "$OPENCLAW_CONFIG_DIR/channels" 2>/dev/null || true
+                            echo -e "${GREEN}Config deleted. Starting fresh onboarding...${NC}"
+                        else
+                            echo -e "${YELLOW}Cancelled. Keeping existing config.${NC}"
+                            return 0
+                        fi
+                        ;;
+                    *)
+                        echo -e "${YELLOW}Invalid choice. Keeping existing config.${NC}"
+                        return 0
+                        ;;
+                esac
+            else
+                # Non-interactive mode - keep existing config
+                step_done "OpenClaw already configured (instance: $instance_id)"
+                return 0
+            fi
         fi
         log_info "Config file exists but gateway service not found. Re-running onboarding..."
     fi
@@ -593,7 +705,7 @@ run_onboarding() {
         non_interactive=true
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}NON-INTERACTIVE MODE DETECTED${NC}"
+        echo -e "${YELLOW}.  NON-INTERACTIVE MODE DETECTED${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         echo -e "Attempting automatic onboarding with ${CYAN}--install-daemon${NC} flag..."
@@ -620,7 +732,7 @@ run_onboarding() {
     if [ "$non_interactive" = true ]; then
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}AUTOMATIC ONBOARDING INCOMPLETE${NC}"
+        echo -e "${YELLOW}.  AUTOMATIC ONBOARDING INCOMPLETE${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         echo -e "To complete onboarding, run:"
@@ -638,11 +750,116 @@ run_onboarding() {
 }
 
 # ============================================================================
-# PHASE 10: START AND VERIFY GATEWAY
+# PHASE 10.5: CONFIGURE VPS DEFAULTS
+# ============================================================================
+
+configure_vps_defaults() {
+    log_step "Applying VPS-friendly configuration defaults"
+
+    # Only proceed if config file exists
+    if [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
+        log_info "No config file found, skipping VPS defaults"
+        return 0
+    fi
+
+    # Check if jq is available
+    if ! command -v jq >/dev/null 2>&1; then
+        log_warning "jq not found, skipping VPS defaults configuration"
+        return 0
+    fi
+
+    local config_modified=false
+
+    # Ensure browser is configured for headless VPS operation
+    log_info "Checking browser configuration..."
+
+    # Check if browser section exists, if not add it
+    if ! jq -e '.browser' "$OPENCLAW_CONFIG_FILE" >/dev/null 2>&1; then
+        log_info "Adding browser configuration for headless VPS..."
+        local temp_config
+        temp_config=$(mktemp)
+        jq '.browser = {
+            "enabled": true,
+            "headless": true,
+            "noSandbox": false,
+            "defaultProfile": "openclaw",
+            "profiles": {
+                "openclaw": {
+                    "cdpPort": 18800,
+                    "driver": "openclaw",
+                    "color": "#FF4500"
+                }
+            }
+        }' "$OPENCLAW_CONFIG_FILE" > "$temp_config"
+        mv "$temp_config" "$OPENCLAW_CONFIG_FILE"
+        config_modified=true
+    else
+        # Browser section exists, check/update headless setting
+        local current_headless
+        current_headless=$(jq -r '.browser.headless // "false"' "$OPENCLAW_CONFIG_FILE")
+
+        if [ "$current_headless" != "true" ]; then
+            log_info "Setting browser.headless = true for VPS..."
+            local temp_config
+            temp_config=$(mktemp)
+            jq '.browser.headless = true' "$OPENCLAW_CONFIG_FILE" > "$temp_config"
+            mv "$temp_config" "$OPENCLAW_CONFIG_FILE"
+            config_modified=true
+        fi
+
+        # Ensure defaultProfile is set
+        local current_profile
+        current_profile=$(jq -r '.browser.defaultProfile // ""' "$OPENCLAW_CONFIG_FILE")
+
+        if [ -z "$current_profile" ] || [ "$current_profile" = "null" ]; then
+            log_info "Setting browser.defaultProfile..."
+            local temp_config
+            temp_config=$(mktemp)
+            jq '.browser.defaultProfile = "openclaw"' "$OPENCLAW_CONFIG_FILE" > "$temp_config"
+            mv "$temp_config" "$OPENCLAW_CONFIG_FILE"
+            config_modified=true
+        fi
+
+        # Ensure profiles section exists with openclaw profile
+        if ! jq -e '.browser.profiles.openclaw' "$OPENCLAW_CONFIG_FILE" >/dev/null 2>&1; then
+            log_info "Adding browser profile configuration..."
+            local temp_config
+            temp_config=$(mktemp)
+            jq '.browser.profiles.openclaw = {
+                "cdpPort": 18800,
+                "driver": "openclaw",
+                "color": "#FF4500"
+            }' "$OPENCLAW_CONFIG_FILE" > "$temp_config"
+            mv "$temp_config" "$OPENCLAW_CONFIG_FILE"
+            config_modified=true
+        fi
+    fi
+
+    if [ "$config_modified" = true ]; then
+        step_done "VPS configuration applied (gateway will restart)"
+        # Signal that gateway needs restart (already running from onboarding)
+        export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+        if systemctl --user is-active --quiet openclaw-gateway 2>/dev/null; then
+            log_info "Restarting gateway to apply new configuration..."
+            systemctl --user restart openclaw-gateway >>"$LOG_FILE" 2>&1
+            # Wait a bit for restart
+            sleep 3
+        fi
+    else
+        step_done "VPS configuration already optimal"
+    fi
+}
+
+# ============================================================================
+# PHASE 11: START AND VERIFY GATEWAY
 # ============================================================================
 
 start_and_verify_gateway() {
-    log_step "Starting OpenClaw gateway"
+    if [ "$GATEWAY_WAS_RUNNING" = true ]; then
+        log_step "Restarting OpenClaw gateway"
+    else
+        log_step "Starting OpenClaw gateway"
+    fi
 
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
@@ -651,7 +868,7 @@ start_and_verify_gateway() {
         log_warning "Gateway service file not found. Onboarding may not have completed successfully."
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}GATEWAY SERVICE NOT FOUND${NC}"
+        echo -e "${YELLOW}.  GATEWAY SERVICE NOT FOUND${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         echo -e "To complete setup, run:"
@@ -684,7 +901,7 @@ start_and_verify_gateway() {
         systemctl --user status openclaw-gateway >>"$LOG_FILE" 2>&1
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}GATEWAY SERVICE NOT ACTIVE${NC}"
+        echo -e "${YELLOW}.  GATEWAY SERVICE NOT ACTIVE${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         echo -e "To start the gateway manually:"
@@ -739,7 +956,7 @@ start_and_verify_gateway() {
         log_warning "Gateway service is active but health check failed"
         echo ""
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}GATEWAY MAY NOT BE FULLY READY${NC}"
+        echo -e "${YELLOW}.  GATEWAY MAY NOT BE FULLY READY${NC}"
         echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
         echo -e "Check status with: ${CYAN}systemctl --user status openclaw-gateway${NC}"
@@ -768,7 +985,7 @@ persist_logs() {
 display_summary() {
     echo ""
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}INSTALLATION COMPLETE${NC}"
+    echo -e "${GREEN}.  INSTALLATION COMPLETE${NC}"
     echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════════════${NC}"
     echo ""
 
@@ -832,12 +1049,14 @@ main() {
     update_system
     install_tailscale
     configure_firewall
+    install_google_chrome
     install_nodejs
     install_homebrew
     install_go
     install_openclaw
     enable_systemd_user_services
     run_onboarding
+    configure_vps_defaults
     start_and_verify_gateway
 
     persist_logs

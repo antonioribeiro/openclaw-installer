@@ -239,6 +239,8 @@ make webui
 6. **Go**: Required for some OpenClaw components
 7. **OpenClaw**: Latest version installed globally via npm
 8. **OpenClaw Gateway**: Systemd user service, started and verified automatically
+9. **Google Chrome**: Installed via official .deb package for browser automation
+10. **VPS Configuration**: Browser automatically configured for headless operation (no display required)
 
 ## Installation Steps
 
@@ -267,33 +269,44 @@ The script performs the following steps in order:
 - Allows SSH (port 22) to prevent lockout
 - Allows Tailscale WireGuard (UDP 41641)
 
-### 5. Node.js Installation
+### 5. Google Chrome Installation
+- Downloads Google Chrome .deb package from official source
+- Installs Google Chrome with all dependencies
+- Creates symlink at `/usr/bin/chromium-browser` for OpenClaw compatibility
+
+### 6. Node.js Installation
 - Removes old Node.js versions if present
 - Adds NodeSource repository for Node.js 22.x
 - Installs Node.js and npm
 
-### 6. Homebrew Installation
+### 7. Homebrew Installation
 - Installs Homebrew for Linux
 - Adds to PATH in .bashrc
 
-### 7. Go Installation
+### 8. Go Installation
 - Installs Go via apt
 
-### 8. OpenClaw Installation
+### 9. OpenClaw Installation
 - Installs OpenClaw globally via npm
 - Creates required directories
 - Verifies installation
 
-### 9. Systemd User Services
+### 10. Systemd User Services
 - Enables user lingering
 - Sets up XDG_RUNTIME_DIR
 
-### 10. Onboarding
+### 11. Onboarding
 - Runs `openclaw onboard --install-daemon`
 - Creates OpenClaw configuration
 - Installs systemd user service
 
-### 11. Gateway Startup and Verification
+### 12. VPS Configuration
+- Applies VPS-friendly defaults to OpenClaw configuration
+- Sets `browser.headless: true` for headless Chrome operation
+- Configures browser profile with CDP port for automation
+- Restarts gateway if configuration was modified
+
+### 13. Gateway Startup and Verification
 - Starts the `openclaw-gateway` systemd user service
 - Verifies gateway is accessible on port 18789
 - Enables service to start automatically on reboot
@@ -345,6 +358,20 @@ systemctl --user status openclaw-gateway
 ```bash
 openclaw channel add <channel-name>
 ```
+
+### 5. Browser Automation (Optional)
+
+Google Chrome is installed and ready for headless browser automation. Test it:
+
+```bash
+# Test Chrome headless
+google-chrome --headless=new --dump-dom https://example.com | head -5
+
+# Take a screenshot
+google-chrome --headless=new --screenshot=/tmp/test.png https://example.com
+```
+
+**Note:** OpenClaw's browser automation requires configuration to use the headless Chrome. Your assistant may need to set up the correct browser profile or enable headless mode in its configuration.
 
 ## Architecture Considerations
 

@@ -1,4 +1,4 @@
-.PHONY: help install status logs config tailscale onboard webui clean
+.PHONY: help install status logs config tailscale onboard webui restart clean
 
 OPENCLAW_CONFIG_DIR=$(HOME)/.openclaw
 LOG_FILE=/var/log/openclaw_install.log
@@ -16,6 +16,7 @@ help:
 	@echo "  tailscale - Start Tailscale daemon and authenticate"
 	@echo "  onboard   - Run OpenClaw onboarding (interactive)"
 	@echo "  webui     - Start OpenClaw gateway service"
+	@echo "  restart   - Restart OpenClaw gateway service"
 	@echo "  clean     - Remove OpenClaw config and data"
 	@echo "  help      - Show this help message"
 	@echo ""
@@ -86,6 +87,14 @@ webui:
 	@echo ""
 	@echo "Gateway should be running on http://127.0.0.1:18789"
 	@echo "If using Tailscale, access via your Tailscale IP: http://<tailscale-ip>:18789"
+
+restart:
+	@echo "Restarting OpenClaw gateway..."
+	@export XDG_RUNTIME_DIR=/run/user/$$(id -u) && systemctl --user restart openclaw-gateway
+	@echo ""
+	@echo "Gateway restarted. Check status with:"
+	@echo "  make status"
+	@echo "  systemctl --user status openclaw-gateway"
 
 clean:
 	@echo "Removing OpenClaw configuration and data..."
