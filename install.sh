@@ -220,6 +220,15 @@ pre_install_checks() {
             echo -e "${GREEN}✓${NC} User '$OPENCLAW_USER' created with passwordless sudo"
         fi
 
+        # Fix ownership of installer directory (for rsync'd files from Mac with UID 502)
+        local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        if [ -d "$SCRIPT_DIR" ]; then
+            echo "Ensuring installer directory has correct ownership..."
+            chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$SCRIPT_DIR" 2>/dev/null || true
+            chmod -R u+rX,g+rX "$SCRIPT_DIR" 2>/dev/null || true
+            echo -e "${GREEN}✓${NC} Installer directory owned by $OPENCLAW_USER"
+        fi
+
         # Detect Docker/CI environment
         local IN_DOCKER=false
         if [ -f /.dockerenv ] || [ "$container" = "docker" ] || [ ! -t 0 ]; then
@@ -288,6 +297,19 @@ pre_install_checks() {
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Exiting. Run as '$OPENCLAW_USER' or as root to create the user."
             exit 1
+        fi
+    fi
+
+    # Fix installer directory ownership if needed (for rsync'd files from Mac)
+    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR" ]; then
+        # Check if we need sudo to fix ownership
+        if [ -O "$SCRIPT_DIR" ] || [ -O "$SCRIPT_DIR/install.sh" 2>/dev/null ]; then
+            # Already owned by us, no fix needed
+            :
+        elif [ -n "$SUDO" ]; then
+            log_info "Fixing installer directory ownership..."
+            $SUDO chown -R "$(whoami):$(whoami)" "$SCRIPT_DIR" >>"$LOG_FILE" 2>&1 || true
         fi
     fi
 
@@ -1239,7 +1261,13 @@ setup_auto_update_cron() {
         return 0
     fi
 
-    chmod +x "$update_script"
+    # Only chmod if we own the file (avoid "Operation not permitted" on rsync'd files)
+    if [ -O "$update_script" ]; then
+        chmod +x "$update_script"
+    elif [ -n "$SUDO" ]; then
+        # Try with sudo if available
+        $SUDO chmod +x "$update_script" 2>/dev/null || log_warning "Could not make update script executable"
+    fi
 
     local cron_entry="0 3 * * * $update_script --quiet >> $HOME/.openclaw/update-cron.log 2>&1"
 
