@@ -34,6 +34,17 @@ if [ "$EUID" -ne 0 ]; then
     SUDO="sudo"
 fi
 
+# Parse command-line arguments
+HARDENED_MODE=false
+
+for arg in "$@"; do
+    case $arg in
+        --hardened)
+            HARDENED_MODE=true
+            ;;
+    esac
+done
+
 # Add user bin to PATH for npm global installs
 export PATH="$HOME/.local/bin:$PATH"
 
@@ -53,7 +64,7 @@ fi
 
 setup_logging() {
     $SUDO touch "$LOG_FILE" 2>/dev/null || touch "$LOG_FILE"
-    chmod 666 "$LOG_FILE" 2>/dev/null || true
+    chmod 640 "$LOG_FILE" 2>/dev/null || true
 }
 
 # Internal logging - writes to log file only
@@ -291,7 +302,7 @@ update_system() {
     $SUDO apt update >>"$LOG_FILE" 2>&1
     DEBIAN_FRONTEND=noninteractive $SUDO apt upgrade -y >>"$LOG_FILE" 2>&1
 
-    local essential_packages="curl wget gnupg lsb-release ca-certificates iputils-ping git make unzip jq"
+    local essential_packages="curl wget gnupg lsb-release ca-certificates iputils-ping git make unzip zip jq"
     DEBIAN_FRONTEND=noninteractive $SUDO apt install -y $essential_packages >>"$LOG_FILE" 2>&1
 
     # Test: curl should work
@@ -386,6 +397,132 @@ configure_firewall() {
     fi
 
     step_done "Firewall configured and enabled"
+}
+
+# ============================================================================
+# PHASE 4.5: INSTALL FAIL2BAN
+# ============================================================================
+
+install_fail2ban() {
+    log_step "Installing Fail2ban for brute-force protection"
+
+    if command -v fail2ban-server >/dev/null 2>&1; then
+        step_done "Fail2ban already installed"
+        return 0
+    fi
+
+    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y fail2ban >>"$LOG_FILE" 2>&1
+
+    # Create jail.local for SSH protection
+    $SUDO tee /etc/fail2ban/jail.local >/dev/null <<'EOF'
+[DEFAULT]
+bantime = 1h
+findtime = 10m
+maxretry = 3
+destemail = root@localhost
+sendername = Fail2Ban
+action = %(action_mwl)s
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 1h
+EOF
+
+    $SUDO systemctl enable --now fail2ban >>"$LOG_FILE" 2>&1
+    step_done "Fail2ban installed (3 failed attempts = 1hr ban)"
+}
+
+# ============================================================================
+# PHASE 4.6: HARDEN SSH (Only in --hardened mode)
+# ============================================================================
+
+harden_ssh() {
+    # Only run in hardened mode
+    if [ "$HARDENED_MODE" != true ]; then
+        return 0
+    fi
+
+    log_step "Hardening SSH configuration"
+
+    # CRITICAL: Check if user has SSH keys BEFORE disabling password auth
+    local has_ssh_keys=false
+
+    # Check for common SSH key locations for openclaw user
+    if [ -d "$HOME/.ssh" ]; then
+        if ls "$HOME/.ssh/id_"* >/dev/null 2>&1; then
+            has_ssh_keys=true
+        fi
+    fi
+
+    # Also check root's keys (user might be root before switching)
+    if [ -d /root/.ssh ]; then
+        if ls /root/.ssh/id_* >/dev/null 2>&1; then
+            has_ssh_keys=true
+        fi
+    fi
+
+    # Check authorized_keys to see if ANY keys are configured
+    if [ -f "$HOME/.ssh/authorized_keys" ] && [ -s "$HOME/.ssh/authorized_keys" ]; then
+        has_ssh_keys=true
+    fi
+
+    if [ "$has_ssh_keys" = false ]; then
+        log_warning "No SSH keys found! Skipping SSH hardening to avoid lockout."
+        echo ""
+        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}.  SSH HARDENING SKIPPED${NC}"
+        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "SSH keys are required for key-only authentication."
+        echo -e "To set up SSH keys:"
+        echo -e "  ${CYAN}ssh-keygen -t ed25519${NC}"
+        echo -e "  ${CYAN}ssh-copy-id openclaw@your-server${NC}"
+        echo ""
+        echo -e "Then run: ${CYAN}./install.sh --hardened${NC}"
+        return 0
+    fi
+
+    # SSH keys found - proceed with hardening
+    local ssh_config="/etc/ssh/sshd_config"
+    local backup_config="/etc/ssh/sshd_config.backup"
+
+    # Backup original config
+    if [ ! -f "$backup_config" ]; then
+        $SUDO cp "$ssh_config" "$backup_config"
+        log_info "Backed up SSH config to $backup_config"
+    fi
+
+    # Create hardened config
+    $SUDO tee "$ssh_config" >/dev/null <<EOF
+# Security-hardened SSH configuration
+Port 22
+Protocol 2
+PermitRootLogin no
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+MaxAuthTries 3
+LoginGraceTime 30s
+ClientAliveInterval 300
+ClientAliveCountMax 2
+AllowUsers openclaw root
+UseDNS yes
+EOF
+
+    # Test config before restarting
+    if $SUDO sshd -t 2>>"$LOG_FILE"; then
+        $SUDO systemctl reload sshd >>"$LOG_FILE" 2>&1
+        step_done "SSH hardened (key-only auth, no root login)"
+    else
+        $SUDO cp "$backup_config" "$ssh_config"
+        step_failed "SSH config test failed, restored backup"
+    fi
 }
 
 # ============================================================================
@@ -851,6 +988,33 @@ configure_vps_defaults() {
 }
 
 # ============================================================================
+# FIX CREDENTIAL PERMISSIONS
+# ============================================================================
+
+fix_credential_permissions() {
+    log_step "Securing OpenClaw credentials"
+
+    if [ -d "$OPENCLAW_CONFIG_DIR" ]; then
+        # Config directory should be 700 (user only)
+        chmod 700 "$OPENCLAW_CONFIG_DIR" 2>/dev/null || true
+
+        # Credentials subdirectory should be 700
+        if [ -d "$OPENCLAW_CONFIG_DIR/credentials" ]; then
+            chmod 700 "$OPENCLAW_CONFIG_DIR/credentials"
+        fi
+
+        # Config file should be 600
+        if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
+            chmod 600 "$OPENCLAW_CONFIG_FILE"
+        fi
+
+        step_done "Credential permissions secured"
+    else
+        log_info "OpenClaw config not created yet, will secure later"
+    fi
+}
+
+# ============================================================================
 # PHASE 11: START AND VERIFY GATEWAY
 # ============================================================================
 
@@ -916,7 +1080,7 @@ start_and_verify_gateway() {
 
     # Try curl health check first
     if command -v curl >/dev/null 2>&1; then
-        for i in {1..10}; do
+        for _ in {1..10}; do
             if curl -s http://127.0.0.1:18789/health >/dev/null 2>&1 || \
                curl -s http://127.0.0.1:18789 >/dev/null 2>&1; then
                 gateway_ready=true
@@ -963,6 +1127,99 @@ start_and_verify_gateway() {
         echo -e "View logs with:    ${CYAN}journalctl --user -u openclaw-gateway -f${NC}"
         echo ""
     fi
+}
+
+# ============================================================================
+# RESTRICT TO TAILSCALE (Interactive in --hardened mode)
+# ============================================================================
+
+restrict_to_tailscale() {
+    # Only run in hardened mode
+    if [ "$HARDENED_MODE" != true ]; then
+        return 0
+    fi
+
+    # Only run interactively
+    if [ ! -t 0 ]; then
+        return 0
+    fi
+
+    # Check if Tailscale is authenticated
+    if ! $SUDO tailscale status >/dev/null 2>&1; then
+        log_info "Tailscale not authenticated yet. Run '$SUDO tailscale up' first."
+        return 0
+    fi
+
+    # Get Tailscale network info
+    local tailscale_ips
+    tailscale_ips=$($SUDO tailscale ip -4 2>/dev/null)
+
+    if [ -z "$tailscale_ips" ]; then
+        log_info "No Tailscale IPs found"
+        return 0
+    fi
+
+    echo ""
+    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}.  TAILSCALE-ONLY ACCESS MODE${NC}"
+    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "Restrict SSH and gateway access to Tailscale network only."
+    echo -e "This blocks public internet access to these services."
+    echo ""
+    echo -e "Current Tailscale IPs: ${GREEN}$tailscale_ips${NC}"
+    echo ""
+    echo -e "This will:"
+    echo -e "  ${YELLOW}•${NC} Remove public SSH access (port 22 from any)"
+    echo -e "  ${YELLOW}•${NC} Allow SSH only from Tailscale network (100.64.0.0/10)"
+    echo -e "  ${YELLOW}•${NC} Allow gateway (18789) only from Tailscale network"
+    echo ""
+    read -p "Enable Tailscale-only access? [y/N] " -n 1 -r
+    echo ""
+
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        $SUDO ufw delete allow 22/tcp 2>/dev/null || true
+        $SUDO ufw allow from 100.64.0.0/10 to any port 22 proto tcp
+        $SUDO ufw allow from 100.64.0.0/10 to any port 18789 proto tcp
+        $SUDO ufw reload >>"$LOG_FILE" 2>&1
+        step_done "SSH and gateway now Tailscale-only"
+    else
+        log_info "Skipped Tailscale-only configuration"
+    fi
+}
+
+# ============================================================================
+# PHASE 11.5: SETUP AUTO-UPDATE CRON
+# ============================================================================
+
+setup_auto_update_cron() {
+    log_step "Setting up daily auto-update (3:00 AM)"
+
+    # Find the update script relative to this install script
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local update_script="$script_dir/server/update-openclaw.sh"
+
+    # Make sure it exists and is executable
+    if [ ! -f "$update_script" ]; then
+        log_warning "Update script not found at $update_script"
+        return 0
+    fi
+
+    chmod +x "$update_script"
+
+    local cron_entry="0 3 * * * $update_script --quiet >> $HOME/.openclaw/update-cron.log 2>&1"
+
+    # Check if already exists
+    if crontab -l 2>/dev/null | grep -q "update-openclaw.sh"; then
+        log_info "Crontab entry already exists"
+        return 0
+    fi
+
+    # Add to crontab
+    (crontab -l 2>/dev/null; echo "$cron_entry") | crontab -
+
+    step_done "Daily auto-update scheduled at 3:00 AM"
 }
 
 # ============================================================================
@@ -1040,15 +1297,25 @@ main() {
     echo "║                   for Ubuntu VPS with Tailscale                  ║"
     echo "╚══════════════════════════════════════════════════════════════════╝"
     echo -e "${NC}"
+
+    if [ "$HARDENED_MODE" = true ]; then
+        echo -e "${YELLOW}Running in HARDENED mode${NC}"
+        echo ""
+    fi
     echo ""
 
     setup_logging
     log_info "Starting OpenClaw installation..."
+    if [ "$HARDENED_MODE" = true ]; then
+        log_info "Hardened mode enabled"
+    fi
 
     pre_install_checks
     update_system
     install_tailscale
     configure_firewall
+    install_fail2ban
+    harden_ssh
     install_google_chrome
     install_nodejs
     install_homebrew
@@ -1057,7 +1324,10 @@ main() {
     enable_systemd_user_services
     run_onboarding
     configure_vps_defaults
+    fix_credential_permissions
     start_and_verify_gateway
+    restrict_to_tailscale
+    setup_auto_update_cron
 
     persist_logs
     display_summary

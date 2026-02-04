@@ -1,4 +1,4 @@
-.PHONY: help install status logs config tailscale onboard webui restart clean
+.PHONY: help install status logs config tailscale onboard webui restart clean harden backup update
 
 OPENCLAW_CONFIG_DIR=$(HOME)/.openclaw
 LOG_FILE=/var/log/openclaw_install.log
@@ -17,6 +17,9 @@ help:
 	@echo "  onboard   - Run OpenClaw onboarding (interactive)"
 	@echo "  webui     - Start OpenClaw gateway service"
 	@echo "  restart   - Restart OpenClaw gateway service"
+	@echo "  harden    - Restrict SSH/gateway to Tailscale-only access"
+	@echo "  backup    - Backup OpenClaw config to /tmp (excludes browser cache)"
+	@echo "  update    - Update OpenClaw to latest version and restart gateway"
 	@echo "  clean     - Remove OpenClaw config and data"
 	@echo "  help      - Show this help message"
 	@echo ""
@@ -107,4 +110,73 @@ clean:
 		echo "OpenClaw configuration removed."; \
 	else \
 		echo "Cancelled."; \
+	fi
+
+harden:
+	@echo "Restricting SSH and gateway to Tailscale-only access..."
+	@echo "This will block public internet access to these services."
+	@echo ""
+	@echo "Current Tailscale IPs:"
+	@sudo tailscale ip -4 2>/dev/null || echo "Not authenticated"
+	@echo ""
+	@read -p "Continue? [y/N] " -n 1 -r; \
+	echo; \
+	if [[ $$REPLY =~ ^[Yy]$$ ]]; then \
+		sudo ufw delete allow 22/tcp 2>/dev/null || true; \
+		sudo ufw allow from 100.64.0.0/10 to any port 22 proto tcp; \
+		sudo ufw allow from 100.64.0.0/10 to any port 18789 proto tcp; \
+		sudo ufw reload; \
+		echo ""; \
+		echo "Tailscale-only access enabled."; \
+		echo "SSH and gateway (18789) now only accessible from Tailscale network."; \
+	else \
+		echo "Cancelled."; \
+	fi
+
+backup:
+	@echo "Creating OpenClaw configuration backup..."
+	@echo ""
+	@TIMESTAMP=$$(date +%Y%m%d_%H%M%S); \
+	HOSTNAME=$$(hostname); \
+	BACKUP_FILE="/tmp/openclaw-backup-$${HOSTNAME}-$${TIMESTAMP}.zip"; \
+	echo "Creating: $$BACKUP_FILE"; \
+	echo ""; \
+	cd "$(HOME)" && \
+	zip -rq "$$BACKUP_FILE" .openclaw \
+		-x "*/.openclaw/browser/*" \
+		-x "*/.openclaw/canvas/*" \
+		-x "*/.openclaw/media/*" \
+		-x "*/.openclaw/*.bak*" \
+		-x "*/.openclaw/update-check.json" \
+		2>/dev/null; \
+	if [ -f "$$BACKUP_FILE" ]; then \
+		SIZE=$$(du -h "$$BACKUP_FILE" | cut -f1); \
+		echo "Backup complete: $$SIZE"; \
+		echo ""; \
+		echo "Transfer to your local machine:"; \
+		echo ""; \
+		echo "  # Using scp (replace with your local IP/user):"; \
+		echo "  scp $$BACKUP_FILE your-user@your-local-host:~/"; \
+		echo ""; \
+		echo "  # Using rsync (replace with your local IP/user):"; \
+		echo "  rsync -avz --progress $$BACKUP_FILE your-user@your-local-host:~/"; \
+		echo ""; \
+		echo "  # From your local machine (pull):"; \
+		echo "  scp $$(whoami)@$$HOSTNAME:$$BACKUP_FILE ./"; \
+		echo ""; \
+		ls -lh "$$BACKUP_FILE"; \
+	else \
+		echo "Backup failed! Check if zip is installed: zip --version"; \
+	fi
+
+update:
+	@echo "Updating OpenClaw to latest version..."
+	@echo ""
+	@if [ -f update-openclaw.sh ]; then \
+		chmod +x update-openclaw.sh; \
+		./update-openclaw.sh; \
+	else \
+		echo "Error: update-openclaw.sh not found."; \
+		echo "Please run this command from the server/ directory."; \
+		exit 1; \
 	fi

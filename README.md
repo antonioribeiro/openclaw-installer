@@ -118,6 +118,15 @@ make onboard
 # Start OpenClaw gateway (should already be running after install)
 make webui
 
+# Restart OpenClaw gateway
+make restart
+
+# Backup OpenClaw configuration
+make backup
+
+# Update OpenClaw to latest version
+make update
+
 # Remove OpenClaw config and data
 make clean
 ```
@@ -231,16 +240,18 @@ make webui
 
 ## What Gets Installed
 
-1. **System Updates**: Latest security patches and essential packages
+1. **System Updates**: Latest security patches and essential packages (curl, wget, git, zip, unzip, jq)
 2. **Tailscale**: Secure VPN for private access to your OpenClaw instance
-3. **UFW Firewall**: Configured to allow SSH and Tailscale only
-4. **Node.js 22.x**: Required runtime for OpenClaw
-5. **Homebrew**: Package manager for additional tools (Linuxbrew - most OpenClaw skills work on Linux, except macOS-only ones like Notes and Reminders)
-6. **Go**: Required for some OpenClaw components
-7. **OpenClaw**: Latest version installed globally via npm
-8. **OpenClaw Gateway**: Systemd user service, started and verified automatically
-9. **Google Chrome**: Installed via official .deb package for browser automation
-10. **VPS Configuration**: Browser automatically configured for headless operation (no display required)
+3. **UFW Firewall**: Configured with default-deny incoming, SSH and Tailscale allowed
+4. **Fail2ban**: Brute-force protection (3 failed SSH attempts = 1 hour ban)
+5. **Node.js 22.x**: Required runtime for OpenClaw
+6. **Homebrew**: Package manager for additional tools (Linuxbrew)
+7. **Go**: Required for some OpenClaw components
+8. **OpenClaw**: Latest version installed globally via npm
+9. **OpenClaw Gateway**: Systemd user service, started and verified automatically
+10. **Google Chrome**: Installed via official .deb package for browser automation
+11. **Auto-Update Cron**: Daily update check at 3:00 AM with automatic gateway restart
+12. **VPS Configuration**: Browser configured for headless operation
 
 ## Installation Steps
 
@@ -463,6 +474,66 @@ openclaw-installer/
     └── Makefile          # Linux host commands
 ```
 
+## Maintenance
+
+### Backup Configuration
+
+Back up your OpenClaw configuration (excludes browser cache and temporary files):
+
+```bash
+cd ~/openclaw-installer/server
+make backup
+```
+
+This creates a timestamped zip file in `/tmp/` with:
+- Config files (`openclaw.json`, `.env`)
+- Device identity and credentials
+- Agent sessions and profiles
+- Workspace and channels
+
+**To restore:**
+```bash
+unzip /tmp/openclaw-backup-*.zip -d ~/
+systemctl --user restart openclaw-gateway
+```
+
+### Updating OpenClaw
+
+The installer sets up **automatic daily updates** at 3:00 AM via cron. Check status:
+
+```bash
+# View crontab
+crontab -l | grep openclaw
+
+# View update logs
+tail -f ~/.openclaw/update-cron.log
+```
+
+**Manual update:**
+```bash
+cd ~/openclaw-installer/server
+make update
+```
+
+This will:
+1. Check for updates
+2. Install latest version
+3. Restart gateway if updated
+4. Fall back to fresh install if update fails
+
+### Restarting Services
+
+```bash
+# Restart OpenClaw gateway
+systemctl --user restart openclaw-gateway
+
+# Restart Tailscale
+sudo systemctl restart tailscale
+
+# View gateway status
+systemctl --user status openclaw-gateway
+```
+
 ## Troubleshooting
 
 ### Script Fails with "Permission Denied"
@@ -546,15 +617,120 @@ sudo ufw --force reset
 
 ## Security Considerations
 
+### Default Security Measures
+
+The installer includes several security measures by default:
+
 1. **Tailscale Authentication**: The script installs Tailscale but does NOT authenticate it. You must manually run `sudo tailscale up` to complete the setup.
 
 2. **Firewall**: All incoming traffic is blocked except:
    - SSH (port 22) for management access
    - Tailscale WireGuard (UDP 41641) for VPN access
 
-3. **OpenClaw Binding**: OpenClaw binds to `127.0.0.1:18789` by default, accessible only through Tailscale when authenticated.
+3. **Fail2ban**: Automatically installed and configured to protect SSH from brute-force attacks (3 failed attempts = 1 hour ban).
 
-4. **Logs**: Installation logs contain sensitive information and are protected with file permissions.
+4. **OpenClaw Binding**: OpenClaw binds to `127.0.0.1:18789` by default, accessible only through Tailscale when authenticated.
+
+5. **Credential Permissions**: OpenClaw config directory and files are secured with restrictive permissions (700/600).
+
+6. **Logs**: Installation logs are protected with file permissions (640).
+
+### Security Hardening Mode
+
+For additional security, use the `--hardened` flag:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/antonioribeiro/openclaw-installer/main/install.sh | sudo bash -s -- --hardened
+```
+
+The `--hardened` flag enables:
+
+1. **SSH Key-Only Authentication**: Disables password authentication for SSH (requires SSH keys to be set up first)
+2. **No Root Login**: Denies SSH login as root user
+3. **Tailscale-Only Access Prompt**: Offers to restrict SSH and gateway access to Tailscale network only
+
+#### Setting Up SSH Keys Before Hardening
+
+**IMPORTANT**: SSH hardening requires SSH keys to be configured first, or you will be locked out.
+
+```bash
+# Generate SSH key (if you don't have one)
+ssh-keygen -t ed25519
+
+# Copy your public key to the server
+ssh-copy-id openclaw@your-server-ip
+
+# Test SSH key login
+ssh openclaw@your-server-ip
+```
+
+Once SSH keys are working, run the hardened installation:
+
+```bash
+./install.sh --hardened
+```
+
+#### Tailscale-Only Access
+
+After Tailscale is authenticated, you can restrict SSH and gateway access to only the Tailscale network:
+
+```bash
+# Option 1: During hardened install (interactive prompt)
+./install.sh --hardened
+
+# Option 2: Manual post-install
+cd /path/to/openclaw-installer/server
+make harden
+```
+
+This modifies UFW rules to:
+- Remove public SSH access (port 22 from any)
+- Allow SSH only from Tailscale network (100.64.0.0/10)
+- Allow gateway (18789) only from Tailscale network
+
+To reverse this:
+```bash
+sudo ufw allow 22/tcp
+sudo ufw reload
+```
+
+### OpenClaw Access Control
+
+For additional security, configure OpenClaw's access policies to restrict who can interact with your assistant.
+
+#### dmPolicy (Direct Message Policy)
+
+Edit `~/.openclaw/openclaw.json`:
+
+```json
+{
+  "gateway": {
+    "dmPolicy": "allowlist",
+    "allowFrom": ["your-telegram-id", "your-discord-id"]
+  }
+}
+```
+
+To find your IDs:
+- **Telegram**: Message `@userinfobot` on Telegram
+- **Discord**: Go to User Settings > Advanced > Enable Developer Mode, then right-click your name
+
+#### Group Policy
+
+```json
+{
+  "gateway": {
+    "groupPolicy": "denylist",
+    "denyFrom": ["unwanted-group-id"]
+  }
+}
+```
+
+After modifying config, restart the gateway:
+
+```bash
+systemctl --user restart openclaw-gateway
+```
 
 ## Script Exit Codes
 
