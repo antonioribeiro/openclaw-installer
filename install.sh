@@ -1194,6 +1194,12 @@ restrict_to_tailscale() {
 # ============================================================================
 
 setup_auto_update_cron() {
+    # Skip if crontab is not available (Docker/CI)
+    if ! command -v crontab >/dev/null 2>&1; then
+        log_info "crontab not available, skipping auto-update setup"
+        return 0
+    fi
+
     log_step "Setting up daily auto-update (3:00 AM)"
 
     # Find the update script relative to this install script
