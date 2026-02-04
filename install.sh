@@ -949,7 +949,6 @@ configure_vps_defaults() {
             "profiles": {
                 "openclaw": {
                     "cdpPort": 18800,
-                    "driver": "openclaw",
                     "color": "#FF4500"
                 }
             }
@@ -990,7 +989,6 @@ configure_vps_defaults() {
             temp_config=$(mktemp)
             jq '.browser.profiles.openclaw = {
                 "cdpPort": 18800,
-                "driver": "openclaw",
                 "color": "#FF4500"
             }' "$OPENCLAW_CONFIG_FILE" > "$temp_config"
             mv "$temp_config" "$OPENCLAW_CONFIG_FILE"
@@ -999,6 +997,12 @@ configure_vps_defaults() {
     fi
 
     if [ "$config_modified" = true ]; then
+        # Run doctor to fix any config incompatibilities with current version
+        log_info "Running doctor to fix config compatibility..."
+        if command -v openclaw >/dev/null 2>&1; then
+            openclaw doctor --fix >>"$LOG_FILE" 2>&1 || true
+        fi
+
         step_done "VPS configuration applied (gateway will restart)"
         # Signal that gateway needs restart (already running from onboarding)
         export XDG_RUNTIME_DIR="/run/user/$(id -u)"
@@ -1020,24 +1024,20 @@ configure_vps_defaults() {
 fix_credential_permissions() {
     log_step "Securing OpenClaw credentials"
 
-    if [ -d "$OPENCLAW_CONFIG_DIR" ]; then
-        # Config directory should be 700 (user only)
-        chmod 700 "$OPENCLAW_CONFIG_DIR" 2>/dev/null || true
+    # Ensure config directory exists and has correct permissions
+    mkdir -p "$OPENCLAW_CONFIG_DIR" 2>/dev/null || true
+    chmod 700 "$OPENCLAW_CONFIG_DIR" 2>/dev/null || true
 
-        # Credentials subdirectory should be 700
-        if [ -d "$OPENCLAW_CONFIG_DIR/credentials" ]; then
-            chmod 700 "$OPENCLAW_CONFIG_DIR/credentials"
-        fi
+    # Ensure credentials directory exists (required for OAuth)
+    mkdir -p "$OPENCLAW_CONFIG_DIR/credentials" 2>/dev/null || true
+    chmod 700 "$OPENCLAW_CONFIG_DIR/credentials" 2>/dev/null || true
 
-        # Config file should be 600
-        if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
-            chmod 600 "$OPENCLAW_CONFIG_FILE"
-        fi
-
-        step_done "Credential permissions secured"
-    else
-        log_info "OpenClaw config not created yet, will secure later"
+    # Config file should be 600
+    if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
+        chmod 600 "$OPENCLAW_CONFIG_FILE"
     fi
+
+    step_done "Credential permissions secured"
 }
 
 # ============================================================================
@@ -1070,8 +1070,9 @@ start_and_verify_gateway() {
 
     # Start the service
     log_info "Starting openclaw-gateway service..."
-    systemctl --user start openclaw-gateway >>"$LOG_FILE" 2>&1
+    systemctl --user daemon-reload >>"$LOG_FILE" 2>&1 || true
     systemctl --user enable openclaw-gateway >>"$LOG_FILE" 2>&1
+    systemctl --user start openclaw-gateway >>"$LOG_FILE" 2>&1
 
     # Wait for it to be active
     local max_wait=30

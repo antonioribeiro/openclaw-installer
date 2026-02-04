@@ -141,6 +141,10 @@ restart_gateway() {
     user_id="$(id -u)"
     export XDG_RUNTIME_DIR="/run/user/${user_id}"
 
+    # Fix any config incompatibilities after update
+    log_info "Running doctor to fix config compatibility..."
+    openclaw doctor --fix >> "$LOG_FILE" 2>&1 || true
+
     if systemctl --user is-active --quiet openclaw-gateway 2>/dev/null; then
         log_info "Restarting OpenClaw gateway..."
         if systemctl --user restart openclaw-gateway >> "$LOG_FILE" 2>&1; then
@@ -158,8 +162,20 @@ restart_gateway() {
             return 1
         fi
     else
-        log_info "Gateway is not running, skipping restart"
-        return 0
+        log_info "Gateway is not running, starting it..."
+        if systemctl --user start openclaw-gateway >> "$LOG_FILE" 2>&1; then
+            sleep 3
+            if systemctl --user is-active --quiet openclaw-gateway; then
+                log_success "Gateway started successfully"
+                return 0
+            else
+                log_error "Gateway failed to start"
+                return 1
+            fi
+        else
+            log_error "Failed to start gateway"
+            return 1
+        fi
     fi
 }
 

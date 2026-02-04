@@ -1,5 +1,7 @@
 .PHONY: help install status logs config tailscale onboard webui restart clean harden backup update
 
+SHELL = /bin/bash
+
 OPENCLAW_CONFIG_DIR=$(HOME)/.openclaw
 LOG_FILE=/var/log/openclaw_install.log
 
@@ -86,14 +88,14 @@ onboard:
 
 webui:
 	@echo "Starting OpenClaw gateway..."
-	@export XDG_RUNTIME_DIR=/run/user/$$(id -u) && systemctl --user start openclaw-gateway
+	@export XDG_RUNTIME_DIR=/run/user/$$(id -u) && systemctl --user daemon-reload && systemctl --user start openclaw-gateway
 	@echo ""
 	@echo "Gateway should be running on http://127.0.0.1:18789"
 	@echo "If using Tailscale, access via your Tailscale IP: http://<tailscale-ip>:18789"
 
 restart:
 	@echo "Restarting OpenClaw gateway..."
-	@export XDG_RUNTIME_DIR=/run/user/$$(id -u) && systemctl --user restart openclaw-gateway
+	@export XDG_RUNTIME_DIR=/run/user/$$(id -u) && systemctl --user daemon-reload && systemctl --user restart openclaw-gateway
 	@echo ""
 	@echo "Gateway restarted. Check status with:"
 	@echo "  make status"
