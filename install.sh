@@ -1,10 +1,35 @@
 #!/bin/bash
 #
-# OpenClaw Installation Script for Ubuntu VPS
-# This script installs OpenClaw with Tailscale protection on a clean Ubuntu VPS.
-# It is idempotent and can be run multiple times safely.
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                    OpenClaw Installation Script                          ║
+# ║                    for Ubuntu VPS with Tailscale                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
 #
-# Usage: sudo ./install.sh
+# A production-ready, idempotent installer that sets up OpenClaw with:
+#
+#   🔒 Security         • UFW firewall (default-deny)
+#                       • Fail2ban brute-force protection
+#                       • SSH hardening (with --hardened flag)
+#                       • Tailscale VPN integration
+#                       • Credential permission hardening
+#
+#   🤖 OpenClaw        • Latest version via npm
+#                       • Auto-update cron job (daily 3AM)
+#                       • Systemd user service
+#                       • Headless Chrome automation
+#
+#   🛠️  Tools         • Node.js 22.x
+#                       • Homebrew (Linuxbrew)
+#                       • Go
+#                       • zip/unzip, jq, git
+#
+#   💾 Backup          • make backup command (excludes cache)
+#
+# Usage:
+#   sudo ./install.sh              # Standard install
+#   sudo ./install.sh --hardened   # With SSH hardening
+#
+# Project: https://github.com/antonioribeiro/openclaw-installer
 #
 
 set -euo pipefail

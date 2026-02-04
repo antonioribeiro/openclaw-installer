@@ -5,7 +5,31 @@
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%7C24.04-orange)](https://ubuntu.com/)
 [![Docker](https://img.shields.io/badge/Docker-Supported-blue)](https://www.docker.com/)
 
-A comprehensive, idempotent bash script to install OpenClaw on a clean Ubuntu VPS with Tailscale protection. The script is well-logged, properly structured with functions, and informative throughout all steps.
+A production-ready, idempotent installer that sets up **OpenClaw** with security hardening, automatic updates, and comprehensive logging.
+
+## ✨ Features
+
+**🔒 Security**
+- UFW firewall (default-deny incoming, allow outgoing)
+- Fail2ban brute-force protection (3 failed attempts = 1hr ban)
+- SSH hardening with `--hardened` flag (key-only auth, no root login)
+- Tailscale VPN integration for secure access
+- Automatic credential permission hardening
+
+**🤖 OpenClaw**
+- Latest version via npm
+- Auto-update cron job (runs daily at 3:00 AM)
+- Systemd user service with auto-restart
+- Headless Chrome automation support
+
+**🛠️ Tools Installed**
+- Node.js 22.x, Homebrew, Go
+- zip/unzip, jq, git, make
+
+**💾 Maintenance**
+- `make backup` - Quick config backup (excludes cache)
+- `make update` - Manual OpenClaw update
+- `make harden` - Restrict to Tailscale-only access
 
 ## Table of Contents
 
