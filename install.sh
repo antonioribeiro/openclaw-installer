@@ -64,7 +64,8 @@ fi
 
 setup_logging() {
     $SUDO touch "$LOG_FILE" 2>/dev/null || touch "$LOG_FILE"
-    chmod 640 "$LOG_FILE" 2>/dev/null || true
+    # Use 666 to allow openclaw user to write after su switch (Docker/CI case)
+    chmod 666 "$LOG_FILE" 2>/dev/null || true
 }
 
 # Internal logging - writes to log file only
