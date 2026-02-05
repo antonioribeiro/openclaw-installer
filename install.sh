@@ -223,13 +223,20 @@ pre_install_checks() {
         # Copy installer to /home/openclaw/installer (safe location owned by openclaw)
         local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
         local SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+        local INSTALL_SCRIPT_NAME="install.sh"  # Always use install.sh in the target directory
 
         echo "Copying installer to $INSTALLER_DIR..."
         rm -rf "$INSTALLER_DIR" 2>/dev/null || true
         mkdir -p "$INSTALLER_DIR"
         cp -r "$SCRIPT_DIR"/* "$INSTALLER_DIR/" 2>/dev/null || true
         cp -r "$SCRIPT_DIR"/.[!.]* "$INSTALLER_DIR/" 2>/dev/null || true  # copy hidden files too
-        chmod +x "$INSTALLER_DIR/$SCRIPT_NAME" 2>/dev/null || true
+
+        # Rename the script to install.sh if it has a different name (e.g., when piped from curl)
+        if [ "$SCRIPT_NAME" != "$INSTALL_SCRIPT_NAME" ]; then
+            mv "$INSTALLER_DIR/$SCRIPT_NAME" "$INSTALLER_DIR/$INSTALL_SCRIPT_NAME" 2>/dev/null || true
+        fi
+
+        chmod +x "$INSTALLER_DIR/$INSTALL_SCRIPT_NAME" 2>/dev/null || true
         chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
         echo -e "${GREEN}✓${NC} Installer copied to $INSTALLER_DIR"
 
@@ -246,7 +253,7 @@ pre_install_checks() {
             echo ""
 
             # Run the installation as the openclaw user from the safe installer directory
-            su - "$OPENCLAW_USER" -c "cd \"$INSTALLER_DIR\" && OPENCLAW_REEXEC=1 ./$SCRIPT_NAME"
+            su - "$OPENCLAW_USER" -c "cd \"$INSTALLER_DIR\" && OPENCLAW_REEXEC=1 ./$INSTALL_SCRIPT_NAME"
             exit $?
         fi
 
@@ -257,7 +264,7 @@ pre_install_checks() {
         echo -e "     ${CYAN}su - openclaw${NC}"
         echo ""
         echo "  2. Run the installation from the installer directory:"
-        echo -e "     ${CYAN}cd ~/installer && ./$SCRIPT_NAME${NC}"
+        echo -e "     ${CYAN}cd ~/installer && ./$INSTALL_SCRIPT_NAME${NC}"
         echo ""
         echo -e "${YELLOW}Why?${NC} OpenClaw and Homebrew cannot run as root."
         echo "       The installation will continue under the '$OPENCLAW_USER' account."
