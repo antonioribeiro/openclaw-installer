@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.9"
+_VER="0.3.0"
 
 # ============================================================================
 # CONSTANTS
@@ -1435,13 +1435,18 @@ main() {
 
     log_info "Installation completed successfully"
 
-    # Auto-switch to openclaw user if running as root and OpenClaw not configured
+    # If running as root and OpenClaw not configured, remind user to switch
     if [ "$EUID" -eq 0 ] && [ "$(whoami)" != "openclaw" ] && [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
         echo ""
-        echo -e "${CYAN}Switching to openclaw user...${NC}"
+        echo -e "${BOLD}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${BOLD}.  NEXT STEPS${NC}"
+        echo -e "${BOLD}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo ""
-        # Use exec to replace the current process with the openclaw shell
-        exec su - openclaw
+        echo -e "Switch to the openclaw user and run onboarding:"
+        echo ""
+        echo -e "  ${CYAN}su - openclaw${NC}"
+        echo -e "  ${CYAN}cd ~/openclaw/installer && make onboard${NC}"
+        echo ""
     fi
 }
 
