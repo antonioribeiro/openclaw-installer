@@ -8,8 +8,6 @@
 # This minimal script sets up the openclaw user, clones the repository,
 # and runs the full installer. Designed for "curl | bash" usage.
 #
-# Version 0.1.1
-#
 
 set -euo pipefail
 
@@ -59,27 +57,18 @@ echo -e "${CYAN}▶${NC} Fetching OpenClaw installer..."
 # Fix git safe.directory issue for the openclaw user
 git config --global --add safe.directory "$REPO_DIR" >/dev/null 2>&1 || true
 
-if [ -d "$REPO_DIR/.git" ]; then
-    echo "Updating existing repository..."
-    # Ensure correct ownership
-    chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$REPO_DIR" 2>/dev/null || true
+# Force fresh clone to avoid broken states
+# This is safer than trying to recover a potentially broken repo
+rm -rf "$REPO_DIR" 2>/dev/null || true
+mkdir -p "$REPO_DIR"
+chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "/home/$OPENCLAW_USER"
 
-    # Run git commands as root to avoid ownership issues
-    (cd "$REPO_DIR" && git fetch --depth 1 >/dev/null 2>&1 && git checkout -f main >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1)
-
-    echo -e "${GREEN}✓${NC} Repository updated ($(cd "$REPO_DIR" && git log -1 --format='%h' 2>/dev/null || echo 'main'))"
+if git clone "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} Repository cloned to $REPO_DIR (version: $(grep '^# Version' "$REPO_DIR/install.sh" 2>/dev/null | head -1 | awk '{print $NF}'))"
 else
-    rm -rf "$REPO_DIR" 2>/dev/null || true
-    mkdir -p "$REPO_DIR"
-    chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "/home/$OPENCLAW_USER"
-
-    if git clone "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1; then
-        echo -e "${GREEN}✓${NC} Repository cloned to $REPO_DIR"
-    else
-        echo -e "${RED}✗${NC} Failed to clone repository"
-        echo "Please ensure git is installed: apt install -y git"
-        exit 1
-    fi
+    echo -e "${RED}✗${NC} Failed to clone repository"
+    echo "Please ensure git is installed: apt install -y git"
+    exit 1
 fi
 
 # Step 3: Run the full installer
