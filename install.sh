@@ -225,6 +225,19 @@ pre_install_checks() {
         local SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
         local INSTALL_SCRIPT_NAME="install.sh"  # Always use install.sh in the target directory
 
+        # Check if script is being piped from stdin (SCRIPT_NAME will be something like "main" or "bash")
+        if [ ! -f "$SCRIPT_DIR/$SCRIPT_NAME" ] && [ ! -f "$0" ]; then
+            # Script is piped from stdin - can't copy files
+            echo ""
+            echo -e "${YELLOW}Warning:${NC} Script is being piped from stdin."
+            echo "To install OpenClaw, first download the script:"
+            echo ""
+            echo -e "  ${CYAN}curl -fsSL https://raw.githubusercontent.com/antonioribeiro/openclaw-installer/main/install.sh -o install.sh${NC}"
+            echo -e "  ${CYAN}sudo bash install.sh${NC}"
+            echo ""
+            exit 1
+        fi
+
         echo "Copying installer to $INSTALLER_DIR..."
         rm -rf "$INSTALLER_DIR" 2>/dev/null || true
         mkdir -p "$INSTALLER_DIR"
