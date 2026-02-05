@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.8"
+_VER="0.2.9"
 
 # ============================================================================
 # CONSTANTS
@@ -1434,6 +1434,15 @@ main() {
     display_summary
 
     log_info "Installation completed successfully"
+
+    # Auto-switch to openclaw user if running as root and OpenClaw not configured
+    if [ "$EUID" -eq 0 ] && [ "$(whoami)" != "openclaw" ] && [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
+        echo ""
+        echo -e "${CYAN}Switching to openclaw user...${NC}"
+        echo ""
+        # Use exec to replace the current process with the openclaw shell
+        exec su - openclaw
+    fi
 }
 
 main "$@"
