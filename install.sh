@@ -231,7 +231,7 @@ pre_install_checks() {
 
         # Detect Docker/CI environment
         local IN_DOCKER=false
-        if [ -f /.dockerenv ] || [ "$container" = "docker" ] || [ ! -t 0 ]; then
+        if [ -f /.dockerenv ] || [ ! -t 0 ]; then
             IN_DOCKER=true
         fi
 
@@ -252,7 +252,8 @@ pre_install_checks() {
 
             # Run the installation as the openclaw user with proper environment
             # Use su - with -c to get a proper login shell
-            su - "$OPENCLAW_USER" -c "cd \"$SCRIPT_DIR\" && \"$SCRIPT_PATH\""
+            # Set OPENCLAW_REEXEC=1 to skip banner on re-run
+            su - "$OPENCLAW_USER" -c "cd \"$SCRIPT_DIR\" && OPENCLAW_REEXEC=1 \"$SCRIPT_PATH\""
             exit $?
         fi
 
@@ -574,17 +575,76 @@ EOF
 }
 
 # ============================================================================
-# PHASE 5: INSTALL GOOGLE CHROME
+# PHASE 5: INSTALL BROWSER (Chrome on amd64, Chromium on ARM64)
 # ============================================================================
 
 install_google_chrome() {
-    log_step "Installing Google Chrome for browser automation"
+    log_step "Installing browser for automation"
 
+    # Detect architecture
+    local arch=$(uname -m)
+
+    # Chrome only supports amd64/x86_64 - use Chromium for ARM64
+    if [ "$arch" = "aarch64" ] || [ "$arch" = "arm64" ]; then
+        log_info "ARM64 detected - installing Chromium (Chrome not available for ARM64 Linux)"
+        install_chromium
+    else
+        log_info "amd64 detected - installing Google Chrome"
+        install_chrome
+    fi
+}
+
+install_chromium() {
+    # Check if already installed
+    if command -v chromium-browser >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1; then
+        step_done "Chromium already installed"
+        return 0
+    fi
+
+    # Install Chromium from Ubuntu repos
+    log_info "Installing Chromium from Ubuntu repositories..."
+    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y chromium-browser >>"$LOG_FILE" 2>&1
+
+    # Verify installation
+    if ! command -v chromium-browser >/dev/null 2>&1 && ! command -v chromium >/dev/null 2>&1; then
+        step_failed "Chromium installation failed"
+    fi
+
+    # Find the actual binary location and create symlink
+    local chromium_bin=""
+    if [ -f /usr/bin/chromium-browser ]; then
+        chromium_bin="/usr/bin/chromium-browser"
+    elif [ -f /usr/bin/chromium ]; then
+        chromium_bin="/usr/bin/chromium"
+    elif [ -f /snap/bin/chromium ]; then
+        chromium_bin="/snap/bin/chromium"
+    fi
+
+    if [ -n "$chromium_bin" ]; then
+        local version=$($chromium_bin --version 2>/dev/null)
+        step_done "Chromium installed ($version)"
+    else
+        step_failed "Chromium binary not found after installation"
+    fi
+}
+
+install_chrome() {
     # Check if already installed
     if [ -f /opt/google/chrome/google-chrome ]; then
         step_done "Google Chrome already installed"
         return 0
     fi
+
+    # Install Chrome dependencies first (required for minimal Docker images)
+    local chrome_deps="libcairo2 libcups2 libcurl4 libdbus-1-3 libexpat1 \
+        libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 \
+        libudev1 libvulkan1 libx11-6 libxcb1 libxcomposite1 libxdamage1 \
+        libxext6 libxfixes3 libxkbcommon0 libxrandr2 fonts-liberation \
+        libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcddb2 \
+        libdrm2 libjpeg8 libpng16-16 libxss1 libxtst6 xdg-utils"
+
+    log_info "Installing Chrome dependencies..."
+    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y $chrome_deps >>"$LOG_FILE" 2>&1
 
     # Download Google Chrome deb package
     local chrome_deb="/tmp/google-chrome-stable_current_amd64.deb"
@@ -595,9 +655,10 @@ install_google_chrome() {
         step_failed "Failed to download Google Chrome"
     fi
 
-    # Install Google Chrome
+    # Install Google Chrome with --fix-broken to handle any remaining deps
     log_info "Installing Google Chrome (this may take a few minutes)..."
-    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y "$chrome_deb" >>"$LOG_FILE" 2>&1
+    DEBIAN_FRONTEND=noninteractive $SUDO apt install -y "$chrome_deb" >>"$LOG_FILE" 2>&1 || \
+        DEBIAN_FRONTEND=noninteractive $SUDO apt --fix-broken install -y >>"$LOG_FILE" 2>&1
 
     # Clean up deb file
     rm -f "$chrome_deb"
@@ -815,6 +876,31 @@ enable_systemd_user_services() {
 run_onboarding() {
     log_step "Checking OpenClaw onboarding"
 
+    # Set XDG_RUNTIME_DIR for onboarding
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+
+    # Check if running in non-interactive environment (Docker/CI)
+    if [ ! -t 0 ]; then
+        echo ""
+        echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${CYAN}.  ONBOARDING SKIPPED${NC}"
+        echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo ""
+        echo -e "OpenClaw requires interactive onboarding to configure:"
+        echo -e "  • API provider and key (Anthropic, OpenAI, etc.)"
+        echo -e "  • Model selection"
+        echo -e "  • Messaging apps (WhatsApp, Telegram, etc.)"
+        echo -e "  • Skills to install"
+        echo ""
+        echo -e "${BOLD}To complete setup, run:${NC}"
+        echo -e "  ${CYAN}make shell${NC}"
+        echo ""
+        echo -e "Then inside the container:"
+        echo -e "  ${CYAN}openclaw onboard --install-daemon${NC}"
+        echo ""
+        return 0
+    fi
+
     # Check if already configured by verifying config file exists and is valid
     if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
         # Also check if the gateway service file exists (indicates --install-daemon was run)
@@ -822,120 +908,70 @@ run_onboarding() {
             local instance_id
             instance_id=$(cat "$OPENCLAW_CONFIG_FILE" 2>/dev/null | jq -r '.instanceId // "unknown"' 2>/dev/null || echo "configured")
 
-            # Check if running in interactive mode
-            if [ -t 0 ]; then
-                echo ""
-                echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                echo -e "${CYAN}.  OPENCLAW ALREADY CONFIGURED${NC}"
-                echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                echo ""
-                echo -e "  Instance: ${BOLD}$instance_id${NC}"
-                echo ""
-                echo -e "What would you like to do?"
-                echo -e "  ${GREEN}1${NC}) Keep existing config and restart gateway"
-                echo -e "  ${RED}2${NC}) Full re-onboarding ${RED}(deletes ALL configuration)${NC}"
-                echo ""
-                read -p "  Choice [1-2]: " -n 1 -r
-                echo ""
-                echo ""
+            echo ""
+            echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+            echo -e "${CYAN}.  OPENCLAW ALREADY CONFIGURED${NC}"
+            echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+            echo ""
+            echo -e "  Instance: ${BOLD}$instance_id${NC}"
+            echo ""
+            echo -e "What would you like to do?"
+            echo -e "  ${GREEN}1${NC}) Keep existing config and restart gateway"
+            echo -e "  ${RED}2${NC}) Full re-onboarding ${RED}(deletes ALL configuration)${NC}"
+            echo ""
+            read -p "  Choice [1-2]: " -n 1 -r
+            echo ""
+            echo ""
 
-                case $REPLY in
-                    1)
-                        echo -e "${GREEN}Keeping existing config, gateway will be restarted...${NC}"
+            case $REPLY in
+                1)
+                    echo -e "${GREEN}Keeping existing config, gateway will be restarted...${NC}"
+                    return 0
+                    ;;
+                2)
+                    echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                    echo -e "${RED}.  WARNING: THIS WILL DELETE YOUR OPENCLAW CONFIGURATION${NC}"
+                    echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
+                    echo ""
+                    echo -e "  ${RED}• All channels will be removed${NC}"
+                    echo -e "  ${RED}• All settings will be reset${NC}"
+                    echo -e "  ${RED}• Your API keys and credentials will be deleted${NC}"
+                    echo ""
+                    echo -e "  Instance: ${BOLD}$instance_id${NC}"
+                    echo ""
+                    read -p "  Type '${BOLD}DELETE${NC}' to confirm: " -r
+                    echo ""
+                    if [ "$REPLY" = "DELETE" ]; then
+                        # Remove existing config to force re-onboarding
+                        rm -f "$OPENCLAW_CONFIG_FILE"
+                        rm -rf "$OPENCLAW_CONFIG_DIR/channels" 2>/dev/null || true
+                        echo -e "${GREEN}Config deleted. Starting fresh onboarding...${NC}"
+                    else
+                        echo -e "${YELLOW}Cancelled. Keeping existing config.${NC}"
                         return 0
-                        ;;
-                    2)
-                        echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                        echo -e "${RED}.  WARNING: THIS WILL DELETE YOUR OPENCLAW CONFIGURATION${NC}"
-                        echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                        echo ""
-                        echo -e "  ${RED}• All channels will be removed${NC}"
-                        echo -e "  ${RED}• All settings will be reset${NC}"
-                        echo -e "  ${RED}• Your API keys and credentials will be deleted${NC}"
-                        echo ""
-                        echo -e "  Instance: ${BOLD}$instance_id${NC}"
-                        echo ""
-                        read -p "  Type '${BOLD}DELETE${NC}' to confirm: " -r
-                        echo ""
-                        if [ "$REPLY" = "DELETE" ]; then
-                            # Remove existing config to force re-onboarding
-                            rm -f "$OPENCLAW_CONFIG_FILE"
-                            rm -rf "$OPENCLAW_CONFIG_DIR/channels" 2>/dev/null || true
-                            echo -e "${GREEN}Config deleted. Starting fresh onboarding...${NC}"
-                        else
-                            echo -e "${YELLOW}Cancelled. Keeping existing config.${NC}"
-                            return 0
-                        fi
-                        ;;
-                    *)
-                        echo -e "${YELLOW}Invalid choice. Keeping existing config.${NC}"
-                        return 0
-                        ;;
-                esac
-            else
-                # Non-interactive mode - keep existing config
-                step_done "OpenClaw already configured (instance: $instance_id)"
-                return 0
-            fi
+                    fi
+                    ;;
+                *)
+                    echo -e "${YELLOW}Invalid choice. Keeping existing config.${NC}"
+                    return 0
+                    ;;
+            esac
         fi
         log_info "Config file exists but gateway service not found. Re-running onboarding..."
     fi
 
-    # Set XDG_RUNTIME_DIR for onboarding
-    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-
-    # Check if running in non-interactive environment
-    local non_interactive=false
-    if [ ! -t 0 ]; then
-        non_interactive=true
-        echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}.  NON-INTERACTIVE MODE DETECTED${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-        echo -e "Attempting automatic onboarding with ${CYAN}--install-daemon${NC} flag..."
-        echo ""
-    fi
-
-    log_info "Starting onboarding with --install-daemon..."
-
-    # Run onboarding with --install-daemon flag
-    # In non-interactive mode, we still try - openclaw may have auto-confirmation
+    # Run interactive onboarding
+    log_info "Starting interactive onboarding..."
     if openclaw onboard --install-daemon 2>&1 | tee -a "$LOG_FILE"; then
-        # Verify onboarding actually created the config
-        if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
-            step_done "OpenClaw onboarding completed"
-            return 0
-        else
-            log_warning "Onboarding command succeeded but config file not found"
-        fi
-    else
-        log_warning "Onboarding command exited with error code $?"
-    fi
-
-    # If we get here, onboarding didn't complete successfully
-    if [ "$non_interactive" = true ]; then
-        echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${YELLOW}.  AUTOMATIC ONBOARDING INCOMPLETE${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-        echo -e "To complete onboarding, run:"
-        echo -e "  ${CYAN}openclaw onboard --install-daemon${NC}"
-        echo ""
-        echo -e "Then start the gateway:"
-        echo -e "  ${CYAN}systemctl --user start openclaw-gateway${NC}"
-        echo ""
-        # Don't fail the script - continue to gateway startup which will detect the issue
+        step_done "OpenClaw onboarding completed"
         return 0
     fi
 
-    # Interactive mode - fail if onboarding didn't work
     step_failed "OpenClaw onboarding failed. Check logs at: $LOG_FILE"
 }
 
 # ============================================================================
-# PHASE 10.5: CONFIGURE VPS DEFAULTS
+# PHASE 10: CONFIGURE VPS DEFAULTS
 # ============================================================================
 
 configure_vps_defaults() {
@@ -1067,6 +1103,13 @@ fix_credential_permissions() {
 # ============================================================================
 
 start_and_verify_gateway() {
+    # In Docker/CI mode, skip gateway start - user needs to onboard first
+    if [ ! -t 0 ]; then
+        log_step "Gateway setup (pending onboarding)"
+        step_done "Run 'make shell' then 'openclaw onboard --install-daemon' to complete"
+        return 0
+    fi
+
     if [ "$GATEWAY_WAS_RUNNING" = true ]; then
         log_step "Restarting OpenClaw gateway"
     else
@@ -1085,7 +1128,6 @@ start_and_verify_gateway() {
         echo ""
         echo -e "To complete setup, run:"
         echo -e "  ${CYAN}openclaw onboard --install-daemon${NC}"
-        echo -e "  ${CYAN}systemctl --user start openclaw-gateway${NC}"
         echo ""
         return 0
     fi
@@ -1329,14 +1371,33 @@ display_summary() {
         fi
     fi
 
-    # Onboarding status
+    # Onboarding status - check if actually configured with API key
     if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
-        echo ""
-        echo -e "  ${GREEN}✓${NC} OpenClaw: ${BLUE}Configured${NC}"
+        # Check if any auth provider is configured
+        local has_auth=false
+        if command -v jq >/dev/null 2>&1; then
+            if jq -e '.auth // empty' "$OPENCLAW_CONFIG_FILE" >/dev/null 2>&1; then
+                has_auth=true
+            fi
+        fi
+
+        if [ "$has_auth" = true ]; then
+            echo ""
+            echo -e "  ${GREEN}✓${NC} OpenClaw: ${BLUE}Configured with API key${NC}"
+        else
+            echo ""
+            echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Daemon installed, API key required${NC}"
+            echo -e "${YELLOW}  Run: openclaw configure --section anthropic${NC}"
+        fi
     else
         echo ""
         echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not configured${NC}"
-        echo -e "${YELLOW}  Run: openclaw onboard --install-daemon${NC}"
+        # Show appropriate instructions based on environment
+        if [ ! -t 0 ]; then
+            echo -e "${YELLOW}  Run: make shell, then openclaw onboard --install-daemon${NC}"
+        else
+            echo -e "${YELLOW}  Run: openclaw onboard --install-daemon${NC}"
+        fi
     fi
 
     echo ""
@@ -1352,18 +1413,21 @@ display_summary() {
 # ============================================================================
 
 main() {
-    echo -e "${CYAN}"
-    echo "╔══════════════════════════════════════════════════════════════════╗"
-    echo "║                   OpenClaw Installation Script                   ║"
-    echo "║                   for Ubuntu VPS with Tailscale                  ║"
-    echo "╚══════════════════════════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    # Skip banner on re-exec (after user switch)
+    if [ "${OPENCLAW_REEXEC:-0}" != "1" ]; then
+        echo -e "${CYAN}"
+        echo "╔══════════════════════════════════════════════════════════════════╗"
+        echo "║                   OpenClaw Installation Script                   ║"
+        echo "║                   for Ubuntu VPS with Tailscale                  ║"
+        echo "╚══════════════════════════════════════════════════════════════════╝"
+        echo -e "${NC}"
 
-    if [ "$HARDENED_MODE" = true ]; then
-        echo -e "${YELLOW}Running in HARDENED mode${NC}"
+        if [ "$HARDENED_MODE" = true ]; then
+            echo -e "${YELLOW}Running in HARDENED mode${NC}"
+            echo ""
+        fi
         echo ""
     fi
-    echo ""
 
     setup_logging
     log_info "Starting OpenClaw installation..."
