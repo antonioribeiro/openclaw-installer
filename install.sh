@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.4"
+_VER="0.2.6"
 
 # ============================================================================
 # CONSTANTS
@@ -891,105 +891,50 @@ run_onboarding() {
     # Set XDG_RUNTIME_DIR for onboarding
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
-    # Check environment to determine if we should skip onboarding
-    # OPENCLAW_ENV is set by the Makefile: "docker" or "vps"
-    # If not set, default to allowing onboarding (direct script execution)
-    local SKIP_ONBOARDING=false
-    if [ "${OPENCLAW_ENV:-}" = "docker" ]; then
-        SKIP_ONBOARDING=true
-    elif [ "${CI:-false}" = "true" ]; then
-        SKIP_ONBOARDING=true
-    fi
-
-    # Skip onboarding in Docker or CI environments
-    if [ "$SKIP_ONBOARDING" = true ]; then
-        echo ""
-        echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${CYAN}.  ONBOARDING SKIPPED${NC}"
-        echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-        echo -e "OpenClaw requires interactive onboarding to configure:"
-        echo -e "  • API provider and key (Anthropic, OpenAI, etc.)"
-        echo -e "  • Model selection"
-        echo -e "  • Messaging apps (WhatsApp, Telegram, etc.)"
-        echo -e "  • Skills to install"
-        echo ""
-        echo -e "${BOLD}To complete setup, run:${NC}"
-        echo -e "  ${CYAN}make shell${NC}"
-        echo ""
-        echo -e "Then inside the container:"
-        echo -e "  ${CYAN}openclaw onboard --install-daemon${NC}"
-        echo ""
-        return 0
-    fi
-
-    # Check if already configured by verifying config file exists and is valid
+    # Check if already configured
     if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
-        # Also check if the gateway service file exists (indicates --install-daemon was run)
-        if systemctl --user list-unit-files 2>/dev/null | grep -q "openclaw-gateway.service"; then
-            local instance_id
-            instance_id=$(cat "$OPENCLAW_CONFIG_FILE" 2>/dev/null | jq -r '.instanceId // "unknown"' 2>/dev/null || echo "configured")
-
-            echo ""
-            echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-            echo -e "${CYAN}.  OPENCLAW ALREADY CONFIGURED${NC}"
-            echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
-            echo ""
-            echo -e "  Instance: ${BOLD}$instance_id${NC}"
-            echo ""
-            echo -e "What would you like to do?"
-            echo -e "  ${GREEN}1${NC}) Keep existing config and restart gateway"
-            echo -e "  ${RED}2${NC}) Full re-onboarding ${RED}(deletes ALL configuration)${NC}"
-            echo ""
-            read -p "  Choice [1-2]: " -n 1 -r
-            echo ""
-            echo ""
-
-            case $REPLY in
-                1)
-                    echo -e "${GREEN}Keeping existing config, gateway will be restarted...${NC}"
-                    return 0
-                    ;;
-                2)
-                    echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                    echo -e "${RED}.  WARNING: THIS WILL DELETE YOUR OPENCLAW CONFIGURATION${NC}"
-                    echo -e "${RED}╶════════════════════════════════════════════════════════════════════════════${NC}"
-                    echo ""
-                    echo -e "  ${RED}• All channels will be removed${NC}"
-                    echo -e "  ${RED}• All settings will be reset${NC}"
-                    echo -e "  ${RED}• Your API keys and credentials will be deleted${NC}"
-                    echo ""
-                    echo -e "  Instance: ${BOLD}$instance_id${NC}"
-                    echo ""
-                    read -p "  Type '${BOLD}DELETE${NC}' to confirm: " -r
-                    echo ""
-                    if [ "$REPLY" = "DELETE" ]; then
-                        # Remove existing config to force re-onboarding
-                        rm -f "$OPENCLAW_CONFIG_FILE"
-                        rm -rf "$OPENCLAW_CONFIG_DIR/channels" 2>/dev/null || true
-                        echo -e "${GREEN}Config deleted. Starting fresh onboarding...${NC}"
-                    else
-                        echo -e "${YELLOW}Cancelled. Keeping existing config.${NC}"
-                        return 0
-                    fi
-                    ;;
-                *)
-                    echo -e "${YELLOW}Invalid choice. Keeping existing config.${NC}"
-                    return 0
-                    ;;
-            esac
-        fi
-        log_info "Config file exists but gateway service not found. Re-running onboarding..."
-    fi
-
-    # Run interactive onboarding
-    log_info "Starting interactive onboarding..."
-    if openclaw onboard --install-daemon 2>&1 | tee -a "$LOG_FILE"; then
-        step_done "OpenClaw onboarding completed"
+        step_done "OpenClaw already configured"
         return 0
     fi
 
-    step_failed "OpenClaw onboarding failed. Check logs at: $LOG_FILE"
+    echo ""
+    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}.  ONBOARDING${NC}"
+    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "OpenClaw onboarding will configure:"
+    echo -e "  • API provider and key (Anthropic, OpenAI, etc.)"
+    echo -e "  • Model selection"
+    echo -e "  • Skills to install"
+    echo ""
+
+    # If running as root, we can switch to openclaw user and run onboarding
+    if [ "$EUID" -eq 0 ] && [ "$(whoami)" != "openclaw" ]; then
+        echo -e "${BOLD}Starting onboarding as openclaw user...${NC}"
+        echo ""
+
+        # Switch to openclaw user and run onboarding
+        # Use 'su - -c' to get a clean login shell environment
+        su - openclaw -c "export XDG_RUNTIME_DIR=/run/user/\$(id -u) && cd ~/installer && openclaw onboard"
+
+        # Check if onboarding succeeded
+        if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
+            step_done "OpenClaw onboarding completed"
+        else
+            echo ""
+            echo -e "${YELLOW}Onboarding was cancelled or failed.${NC}"
+            echo -e "To complete setup later, run:"
+            echo -e "  ${CYAN}su - openclaw -c 'openclaw onboard'${NC}"
+            echo ""
+        fi
+        return 0
+    fi
+
+    # Running as non-root or already as openclaw
+    echo -e "${BOLD}To complete setup, run:${NC}"
+    echo -e "  ${GREEN}openclaw onboard${NC}"
+    echo ""
+    return 0
 }
 
 # ============================================================================
@@ -1414,12 +1359,7 @@ display_summary() {
     else
         echo ""
         echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not configured${NC}"
-        # Show appropriate instructions based on environment
-        if [ ! -t 0 ]; then
-            echo -e "${YELLOW}  Run: make shell, then openclaw onboard --install-daemon${NC}"
-        else
-            echo -e "${YELLOW}  Run: openclaw onboard --install-daemon${NC}"
-        fi
+        echo -e "${YELLOW}  Run: openclaw onboard${NC}"
     fi
 
     echo ""
