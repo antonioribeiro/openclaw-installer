@@ -194,6 +194,7 @@ pre_install_checks() {
     log_step "Running pre-install checks"
 
     local OPENCLAW_USER="openclaw"
+    local INSTALLER_DIR="/home/$OPENCLAW_USER/installer"
 
     # If running as root, set up the openclaw user
     if [ "$EUID" -eq 0 ]; then
@@ -212,7 +213,6 @@ pre_install_checks() {
             usermod -aG sudo "$OPENCLAW_USER"
 
             # Set up passwordless sudo for the openclaw user
-            # Ensure /etc/sudoers.d exists first (may not in some Docker containers)
             mkdir -p /etc/sudoers.d
             echo "$OPENCLAW_USER ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/openclaw
             chmod 440 /etc/sudoers.d/openclaw
@@ -220,14 +220,18 @@ pre_install_checks() {
             echo -e "${GREEN}✓${NC} User '$OPENCLAW_USER' created with passwordless sudo"
         fi
 
-        # Fix ownership of installer directory (for rsync'd files from Mac with UID 502)
+        # Copy installer to /home/openclaw/installer (safe location owned by openclaw)
         local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-        if [ -d "$SCRIPT_DIR" ]; then
-            echo "Ensuring installer directory has correct ownership..."
-            chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$SCRIPT_DIR" 2>/dev/null || true
-            chmod -R u+rX,g+rX "$SCRIPT_DIR" 2>/dev/null || true
-            echo -e "${GREEN}✓${NC} Installer directory owned by $OPENCLAW_USER"
-        fi
+        local SCRIPT_NAME="$(basename "${BASH_SOURCE[0]}")"
+
+        echo "Copying installer to $INSTALLER_DIR..."
+        rm -rf "$INSTALLER_DIR" 2>/dev/null || true
+        mkdir -p "$INSTALLER_DIR"
+        cp -r "$SCRIPT_DIR"/* "$INSTALLER_DIR/" 2>/dev/null || true
+        cp -r "$SCRIPT_DIR"/.[!.]* "$INSTALLER_DIR/" 2>/dev/null || true  # copy hidden files too
+        chmod +x "$INSTALLER_DIR/$SCRIPT_NAME" 2>/dev/null || true
+        chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
+        echo -e "${GREEN}✓${NC} Installer copied to $INSTALLER_DIR"
 
         # Detect Docker/CI environment
         local IN_DOCKER=false
@@ -241,19 +245,8 @@ pre_install_checks() {
             echo "Continuing installation as '$OPENCLAW_USER' user..."
             echo ""
 
-            # Copy the script to a location accessible by the openclaw user
-            local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-            local SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
-
-            # Ensure the script is accessible and executable
-            chmod +x "$SCRIPT_PATH"
-            chmod 755 "$HOME" 2>/dev/null || true
-            chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "/home/$OPENCLAW_USER" 2>/dev/null || true
-
-            # Run the installation as the openclaw user with proper environment
-            # Use su - with -c to get a proper login shell
-            # Set OPENCLAW_REEXEC=1 to skip banner on re-run
-            su - "$OPENCLAW_USER" -c "cd \"$SCRIPT_DIR\" && OPENCLAW_REEXEC=1 \"$SCRIPT_PATH\""
+            # Run the installation as the openclaw user from the safe installer directory
+            su - "$OPENCLAW_USER" -c "cd \"$INSTALLER_DIR\" && OPENCLAW_REEXEC=1 ./$SCRIPT_NAME"
             exit $?
         fi
 
@@ -263,26 +256,14 @@ pre_install_checks() {
         echo "  1. Switch to the openclaw user:"
         echo -e "     ${CYAN}su - openclaw${NC}"
         echo ""
-        echo "  2. Re-run the installation:"
-        local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-        # Check if there's a server subdirectory in the script's directory
-        if [ -d "$SCRIPT_DIR/server" ]; then
-            echo -e "     ${CYAN}cd $SCRIPT_DIR/server && make install${NC}"
-        else
-            echo -e "     ${CYAN}cd $SCRIPT_DIR && ./install.sh${NC}"
-        fi
+        echo "  2. Run the installation from the installer directory:"
+        echo -e "     ${CYAN}cd ~/installer && ./$SCRIPT_NAME${NC}"
         echo ""
         echo -e "${YELLOW}Why?${NC} OpenClaw and Homebrew cannot run as root."
         echo "       The installation will continue under the '$OPENCLAW_USER' account."
         echo ""
-
-        # Copy the repo to the new user's home for convenience
-        if [ "$SCRIPT_DIR" != "/home/$OPENCLAW_USER" ]; then
-            mkdir -p "/home/$OPENCLAW_USER/$(basename "$SCRIPT_DIR")" 2>/dev/null || true
-            cp -r "$SCRIPT_DIR"/* "/home/$OPENCLAW_USER/$(basename "$SCRIPT_DIR")/" 2>/dev/null || true
-            echo -e "${GREEN}✓${NC} Files copied to /home/$OPENCLAW_USER/$(basename "$SCRIPT_DIR")/"
-        fi
+        echo -e "${GREEN}✓${NC} Files copied to $INSTALLER_DIR"
+        echo ""
 
         exit 0
     fi
@@ -298,19 +279,6 @@ pre_install_checks() {
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Exiting. Run as '$OPENCLAW_USER' or as root to create the user."
             exit 1
-        fi
-    fi
-
-    # Fix installer directory ownership if needed (for rsync'd files from Mac)
-    local SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    if [ -n "$SCRIPT_DIR" ] && [ -d "$SCRIPT_DIR" ]; then
-        # Check if we need sudo to fix ownership
-        if [ -O "$SCRIPT_DIR" ] || [ -O "$SCRIPT_DIR/install.sh" 2>/dev/null ]; then
-            # Already owned by us, no fix needed
-            :
-        elif [ -n "$SUDO" ]; then
-            log_info "Fixing installer directory ownership..."
-            $SUDO chown -R "$(whoami):$(whoami)" "$SCRIPT_DIR" >>"$LOG_FILE" 2>&1 || true
         fi
     fi
 
