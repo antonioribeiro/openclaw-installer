@@ -8,7 +8,7 @@
 # This minimal script sets up the openclaw user, clones the repository,
 # and runs the full installer. Designed for "curl | bash" usage.
 #
-# Version 1.0.0
+# Version 0.1.1
 #
 
 set -euo pipefail
@@ -27,7 +27,7 @@ readonly NC='\033[0m'
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║                  OpenClaw Bootstrap Script                       ║"
-echo "║                  for Ubuntu VPS with Tailscale            v0.1.0 ║"
+echo "║                  for Ubuntu VPS with Tailscale            v0.1.1 ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -63,7 +63,10 @@ if [ -d "$REPO_DIR/.git" ]; then
     echo "Updating existing repository..."
     # Ensure correct ownership
     chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$REPO_DIR" 2>/dev/null || true
-    (cd "$REPO_DIR" && su - "$OPENCLAW_USER" -c "git fetch --depth 1 && git checkout -f main && git pull --ff-only" >/dev/null 2>&1)
+
+    # Run git commands as root to avoid ownership issues
+    (cd "$REPO_DIR" && git fetch --depth 1 >/dev/null 2>&1 && git checkout -f main >/dev/null 2>&1 && git reset --hard origin/main >/dev/null 2>&1)
+
     echo -e "${GREEN}✓${NC} Repository updated ($(cd "$REPO_DIR" && git log -1 --format='%h' 2>/dev/null || echo 'main'))"
 else
     rm -rf "$REPO_DIR" 2>/dev/null || true
