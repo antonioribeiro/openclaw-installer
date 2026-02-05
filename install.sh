@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.0"
+_VER="0.3.0"
 
 # ============================================================================
 # CONSTANTS
@@ -242,15 +242,28 @@ pre_install_checks() {
         fi
 
         if [ -z "$CURRENT_SCRIPT" ]; then
-            # Script is piped from stdin - can't copy files
+            # Script is piped from stdin - auto-download to /tmp
             echo ""
-            echo -e "${YELLOW}Warning:${NC} Script is being piped from stdin."
-            echo "To install OpenClaw, first download the script:"
+            echo -e "${YELLOW}Script is being piped from stdin.${NC}"
+            echo "Downloading installer to /tmp/install.sh..."
             echo ""
-            echo -e "  ${CYAN}curl -fsSL https://raw.githubusercontent.com/antonioribeiro/openclaw-installer/main/install.sh -o install.sh${NC}"
-            echo -e "  ${CYAN}sudo bash install.sh${NC}"
-            echo ""
-            exit 1
+
+            local DOWNLOAD_URL="https://raw.githubusercontent.com/antonioribeiro/openclaw-installer/main/install.sh"
+            if curl -fsSL "$DOWNLOAD_URL" -o /tmp/install.sh 2>/dev/null; then
+                chmod +x /tmp/install.sh
+                echo -e "${GREEN}✓${NC} Downloaded to /tmp/install.sh"
+                echo "Re-running from downloaded script..."
+                echo ""
+                exec bash /tmp/install.sh
+            else
+                echo -e "${RED}✗${NC} Failed to download script."
+                echo ""
+                echo "Please download manually:"
+                echo -e "  ${CYAN}curl -fsSL $DOWNLOAD_URL -o install.sh${NC}"
+                echo -e "  ${CYAN}sudo bash install.sh${NC}"
+                echo ""
+                exit 1
+            fi
         fi
 
         echo "Copying installer to $INSTALLER_DIR..."
