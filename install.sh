@@ -636,11 +636,12 @@ install_chrome() {
     fi
 
     # Install Chrome dependencies first (required for minimal Docker images)
+    # Note: libasound2t64 is used on Ubuntu 24.04+ (was libasound2)
     local chrome_deps="libcairo2 libcups2 libcurl4 libdbus-1-3 libexpat1 \
         libgbm1 libglib2.0-0 libgtk-3-0 libnspr4 libnss3 libpango-1.0-0 \
         libudev1 libvulkan1 libx11-6 libxcb1 libxcomposite1 libxdamage1 \
         libxext6 libxfixes3 libxkbcommon0 libxrandr2 fonts-liberation \
-        libasound2 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcddb2 \
+        libasound2t64 libatk-bridge2.0-0 libatk1.0-0 libatspi2.0-0 libcddb2 \
         libdrm2 libjpeg8 libpng16-16 libxss1 libxtst6 xdg-utils"
 
     log_info "Installing Chrome dependencies..."
