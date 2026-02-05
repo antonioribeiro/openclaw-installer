@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.7"
+_VER="0.2.8"
 
 # ============================================================================
 # CONSTANTS
@@ -266,20 +266,23 @@ pre_install_checks() {
             fi
         fi
 
-        echo "Copying installer to $INSTALLER_DIR..."
+        echo "Cloning repository to $INSTALLER_DIR..."
         rm -rf "$INSTALLER_DIR" 2>/dev/null || true
-        mkdir -p "$INSTALLER_DIR"
-        cp -r "$SCRIPT_DIR"/* "$INSTALLER_DIR/" 2>/dev/null || true
-        cp -r "$SCRIPT_DIR"/.[!.]* "$INSTALLER_DIR/" 2>/dev/null || true  # copy hidden files too
 
-        # Rename the script to install.sh if it has a different name
-        if [ "$SCRIPT_NAME" != "$INSTALL_SCRIPT_NAME" ] && [ -f "$INSTALLER_DIR/$SCRIPT_NAME" ]; then
-            mv "$INSTALLER_DIR/$SCRIPT_NAME" "$INSTALLER_DIR/$INSTALL_SCRIPT_NAME" 2>/dev/null || true
+        # Clone the repository
+        if git clone https://github.com/antonioribeiro/openclaw-installer.git "$INSTALLER_DIR" >>"$LOG_FILE" 2>&1; then
+            chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
+            echo -e "${GREEN}✓${NC} Repository cloned to $INSTALLER_DIR"
+        else
+            # Fallback: copy files if git clone fails (network issues, etc.)
+            echo -e "${YELLOW}Git clone failed, copying files instead...${NC}"
+            rm -rf "$INSTALLER_DIR" 2>/dev/null || true
+            mkdir -p "$INSTALLER_DIR"
+            cp -r "$SCRIPT_DIR"/* "$INSTALLER_DIR/" 2>/dev/null || true
+            cp -r "$SCRIPT_DIR"/.[!.]* "$INSTALLER_DIR/" 2>/dev/null || true
+            chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
+            echo -e "${GREEN}✓${NC} Files copied to $INSTALLER_DIR"
         fi
-
-        chmod +x "$INSTALLER_DIR/$INSTALL_SCRIPT_NAME" 2>/dev/null || true
-        chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
-        echo -e "${GREEN}✓${NC} Installer copied to $INSTALLER_DIR"
 
         # Detect Docker environment ONLY (not CI, not regular VPS)
         # Check for actual Docker indicators: /.dockerenv or docker in /proc/1/cgroup
@@ -936,8 +939,10 @@ run_onboarding() {
     echo ""
     echo -e "${BOLD}Installation complete!${NC}"
     echo ""
-    echo -e "To finish setup, SSH into your server and run:"
-    echo -e "  ${GREEN}openclaw onboard${NC}"
+    echo -e "${BOLD}Next steps:${NC}"
+    echo -e "  1. ${CYAN}cd ~/openclaw/installer${NC}"
+    echo -e "  2. ${CYAN}make onboard${NC}    # Configure API key and model"
+    echo -e "  3. ${CYAN}make tailscale${NC}  # Optional: Connect to Tailscale network"
     echo ""
     return 0
 }
@@ -1364,7 +1369,10 @@ display_summary() {
     else
         echo ""
         echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not configured${NC}"
-        echo -e "${YELLOW}  Run: openclaw onboard${NC}"
+        echo ""
+        echo -e "${BOLD}To complete setup:${NC}"
+        echo -e "  ${CYAN}cd ~/openclaw/installer && make onboard${NC}"
+        echo ""
     fi
 
     echo ""
