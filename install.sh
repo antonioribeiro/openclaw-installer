@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.1"
+_VER="0.2.2"
 
 # ============================================================================
 # CONSTANTS
@@ -301,22 +301,14 @@ pre_install_checks() {
             exit $?
         fi
 
-        # Interactive mode: show instructions and exit
+        # Continue installation as openclaw user from the installer directory
         echo ""
-        echo -e "${BOLD}Next steps:${NC}"
-        echo "  1. Switch to the openclaw user:"
-        echo -e "     ${CYAN}su - openclaw${NC}"
-        echo ""
-        echo "  2. Run the installation from the installer directory:"
-        echo -e "     ${CYAN}cd ~/installer && ./$INSTALL_SCRIPT_NAME${NC}"
-        echo ""
-        echo -e "${YELLOW}Why?${NC} OpenClaw and Homebrew cannot run as root."
-        echo "       The installation will continue under the '$OPENCLAW_USER' account."
-        echo ""
-        echo -e "${GREEN}✓${NC} Files copied to $INSTALLER_DIR"
+        echo -e "${CYAN}Continuing installation as '$OPENCLAW_USER' user...${NC}"
         echo ""
 
-        exit 0
+        # Run the installation as the openclaw user from the safe installer directory
+        su - "$OPENCLAW_USER" -c "cd \"$INSTALLER_DIR\" && OPENCLAW_REEXEC=1 ./$INSTALL_SCRIPT_NAME"
+        exit $?
     fi
 
     # Check if we're running as the openclaw user (recommended)
