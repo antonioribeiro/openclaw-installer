@@ -55,9 +55,15 @@ fi
 # Step 2: Clone or update the repository
 echo ""
 echo -e "${CYAN}▶${NC} Fetching OpenClaw installer..."
+
+# Fix git safe.directory issue for the openclaw user
+git config --global --add safe.directory "$REPO_DIR" >/dev/null 2>&1 || true
+
 if [ -d "$REPO_DIR/.git" ]; then
     echo "Updating existing repository..."
-    (cd "$REPO_DIR" && git fetch --depth 1 && git checkout -f main && git pull --ff-only >/dev/null 2>&1)
+    # Ensure correct ownership
+    chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$REPO_DIR" 2>/dev/null || true
+    (cd "$REPO_DIR" && su - "$OPENCLAW_USER" -c "git fetch --depth 1 && git checkout -f main && git pull --ff-only" >/dev/null 2>&1)
     echo -e "${GREEN}✓${NC} Repository updated ($(cd "$REPO_DIR" && git log -1 --format='%h' 2>/dev/null || echo 'main'))"
 else
     rm -rf "$REPO_DIR" 2>/dev/null || true
