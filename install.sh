@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.6"
+_VER="0.2.7"
 
 # ============================================================================
 # CONSTANTS
@@ -908,30 +908,35 @@ run_onboarding() {
     echo -e "  • Skills to install"
     echo ""
 
-    # If running as root, we can switch to openclaw user and run onboarding
-    if [ "$EUID" -eq 0 ] && [ "$(whoami)" != "openclaw" ]; then
-        echo -e "${BOLD}Starting onboarding as openclaw user...${NC}"
+    # Check if we have a terminal (stdin is a tty)
+    # If yes, run onboarding directly. If no, we're in a pipe and can't do interactive input.
+    if [ -t 0 ]; then
+        # We have a terminal - run onboarding
+        echo -e "${BOLD}Starting onboarding...${NC}"
         echo ""
 
-        # Switch to openclaw user and run onboarding
-        # Use 'su - -c' to get a clean login shell environment
-        su - openclaw -c "export XDG_RUNTIME_DIR=/run/user/\$(id -u) && cd ~/installer && openclaw onboard"
-
-        # Check if onboarding succeeded
-        if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
-            step_done "OpenClaw onboarding completed"
-        else
-            echo ""
-            echo -e "${YELLOW}Onboarding was cancelled or failed.${NC}"
-            echo -e "To complete setup later, run:"
-            echo -e "  ${CYAN}su - openclaw -c 'openclaw onboard'${NC}"
-            echo ""
+        if openclaw onboard 2>&1 | tee -a "$LOG_FILE"; then
+            # Check if onboarding actually created a config
+            if [ -f "$OPENCLAW_CONFIG_FILE" ]; then
+                step_done "OpenClaw onboarding completed"
+                return 0
+            fi
         fi
+
+        # Onboarding didn't complete
+        echo ""
+        echo -e "${YELLOW}Onboarding was cancelled or failed.${NC}"
+        echo -e "To complete setup later, run: ${CYAN}openclaw onboard${NC}"
+        echo ""
         return 0
     fi
 
-    # Running as non-root or already as openclaw
-    echo -e "${BOLD}To complete setup, run:${NC}"
+    # No terminal - can't do interactive onboarding
+    # This happens when installing via 'curl | bash'
+    echo ""
+    echo -e "${BOLD}Installation complete!${NC}"
+    echo ""
+    echo -e "To finish setup, SSH into your server and run:"
     echo -e "  ${GREEN}openclaw onboard${NC}"
     echo ""
     return 0
