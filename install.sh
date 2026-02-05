@@ -3,6 +3,7 @@
 # ╔══════════════════════════════════════════════════════════════════════════╗
 # ║                    OpenClaw Installation Script                          ║
 # ║                    for Ubuntu VPS with Tailscale                         ║
+# ║                            Version $_VER                                 ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
 # A production-ready, idempotent installer that sets up OpenClaw with:
@@ -33,6 +34,12 @@
 #
 
 set -euo pipefail
+
+# ============================================================================
+# VERSION
+# ============================================================================
+
+_VER="0.2.0"
 
 # ============================================================================
 # CONSTANTS
@@ -226,7 +233,15 @@ pre_install_checks() {
         local INSTALL_SCRIPT_NAME="install.sh"  # Always use install.sh in the target directory
 
         # Check if script is being piped from stdin (SCRIPT_NAME will be something like "main" or "bash")
-        if [ ! -f "$SCRIPT_DIR/$SCRIPT_NAME" ] && [ ! -f "$0" ]; then
+        # or if BASH_SOURCE points to a non-existent file
+        local CURRENT_SCRIPT=""
+        if [ -f "$SCRIPT_DIR/$SCRIPT_NAME" ]; then
+            CURRENT_SCRIPT="$SCRIPT_DIR/$SCRIPT_NAME"
+        elif [ -f "$0" ]; then
+            CURRENT_SCRIPT="$0"
+        fi
+
+        if [ -z "$CURRENT_SCRIPT" ]; then
             # Script is piped from stdin - can't copy files
             echo ""
             echo -e "${YELLOW}Warning:${NC} Script is being piped from stdin."
@@ -244,8 +259,8 @@ pre_install_checks() {
         cp -r "$SCRIPT_DIR"/* "$INSTALLER_DIR/" 2>/dev/null || true
         cp -r "$SCRIPT_DIR"/.[!.]* "$INSTALLER_DIR/" 2>/dev/null || true  # copy hidden files too
 
-        # Rename the script to install.sh if it has a different name (e.g., when piped from curl)
-        if [ "$SCRIPT_NAME" != "$INSTALL_SCRIPT_NAME" ]; then
+        # Rename the script to install.sh if it has a different name
+        if [ "$SCRIPT_NAME" != "$INSTALL_SCRIPT_NAME" ] && [ -f "$INSTALLER_DIR/$SCRIPT_NAME" ]; then
             mv "$INSTALLER_DIR/$SCRIPT_NAME" "$INSTALLER_DIR/$INSTALL_SCRIPT_NAME" 2>/dev/null || true
         fi
 
@@ -253,15 +268,18 @@ pre_install_checks() {
         chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "$INSTALLER_DIR"
         echo -e "${GREEN}✓${NC} Installer copied to $INSTALLER_DIR"
 
-        # Detect Docker/CI environment
+        # Detect Docker environment ONLY (not CI, not regular VPS)
+        # Check for actual Docker indicators: /.dockerenv or docker in /proc/1/cgroup
         local IN_DOCKER=false
-        if [ -f /.dockerenv ] || [ ! -t 0 ]; then
+        if [ -f /.dockerenv ]; then
+            IN_DOCKER=true
+        elif grep -qa docker /proc/1/cgroup 2>/dev/null; then
             IN_DOCKER=true
         fi
 
         if [ "$IN_DOCKER" = true ]; then
             echo ""
-            echo -e "${CYAN}Docker/CI environment detected.${NC}"
+            echo -e "${CYAN}Docker environment detected.${NC}"
             echo "Continuing installation as '$OPENCLAW_USER' user..."
             echo ""
 
@@ -1408,6 +1426,7 @@ main() {
         echo "╔══════════════════════════════════════════════════════════════════╗"
         echo "║                   OpenClaw Installation Script                   ║"
         echo "║                   for Ubuntu VPS with Tailscale                  ║"
+        echo "║                           Version $_VER                          ║"
         echo "╚══════════════════════════════════════════════════════════════════╝"
         echo -e "${NC}"
 
