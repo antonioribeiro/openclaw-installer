@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.2.2"
+_VER="0.2.4"
 
 # ============================================================================
 # CONSTANTS
@@ -891,8 +891,18 @@ run_onboarding() {
     # Set XDG_RUNTIME_DIR for onboarding
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
-    # Check if running in non-interactive environment (Docker/CI)
-    if [ ! -t 0 ]; then
+    # Check environment to determine if we should skip onboarding
+    # OPENCLAW_ENV is set by the Makefile: "docker" or "vps"
+    # If not set, default to allowing onboarding (direct script execution)
+    local SKIP_ONBOARDING=false
+    if [ "${OPENCLAW_ENV:-}" = "docker" ]; then
+        SKIP_ONBOARDING=true
+    elif [ "${CI:-false}" = "true" ]; then
+        SKIP_ONBOARDING=true
+    fi
+
+    # Skip onboarding in Docker or CI environments
+    if [ "$SKIP_ONBOARDING" = true ]; then
         echo ""
         echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
         echo -e "${CYAN}.  ONBOARDING SKIPPED${NC}"

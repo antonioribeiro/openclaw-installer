@@ -29,7 +29,7 @@ help:
 
 install:
 	@echo "Running OpenClaw installation script..."
-	@../install.sh
+	@OPENCLAW_ENV=vps ../install.sh
 
 status:
 	@echo "=== OpenClaw Status ==="

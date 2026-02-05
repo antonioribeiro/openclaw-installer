@@ -22,7 +22,7 @@ install: down up
 	@echo "Waiting for systemd to be ready..."
 	@sleep 15
 	@echo "Running installation script (existing config will be preserved)..."
-	docker compose exec -T ubuntu bash -c "cd /mnt && ./install.sh"
+	docker compose exec -T ubuntu bash -c "cd /mnt && OPENCLAW_ENV=docker ./install.sh"
 
 up:
 	@mkdir -p ./.disk/{state,logs,home} || true
