@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.3.4"
+_VER="0.3.5"
 
 # ============================================================================
 # CONSTANTS
@@ -1377,7 +1377,9 @@ display_summary() {
             echo -e "${YELLOW}  Run:${NC}"
             echo -e "${YELLOW}    su - openclaw${NC}"
             echo -e "${YELLOW}.   cd ~/installer${NC}"
+            echo -e "${YELLOW}    make tailscale (optional)${NC}"
             echo -e "${YELLOW}    make onboard${NC}"
+            echo -e "${YELLOW}    make webui${NC}"
         fi
     else
         echo ""
@@ -1386,15 +1388,15 @@ display_summary() {
         echo -e "${BOLD}To complete setup:${NC}"
         echo -e "  ${CYAN}su - openclaw${NC}"
         echo -e "  ${CYAN}cd ~/installer${NC}"
+        echo -e "  ${CYAN}make tailscale (optional)${NC}"
         echo -e "  ${CYAN}make onboard${NC}"
+        echo -e "  ${CYAN}make webui${NC}"
         echo ""
     fi
 
     echo ""
     echo -e "${BOLD}Log file:${NC} ${BLUE}$LOG_FILE${NC}"
     echo -e "${BOLD}Config dir:${NC} ${BLUE}$OPENCLAW_CONFIG_DIR${NC}"
-    echo ""
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════════════${NC}"
     echo ""
 }
 
