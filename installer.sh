@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.3.5"
+_VER="0.3.6"
 
 # ============================================================================
 # CONSTANTS
@@ -154,9 +154,9 @@ step_failed() {
 show_error_and_exit() {
     local message="$*"
     echo ""
-    echo -e "${RED}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}══════════════════════════════════════════${NC}"
     echo -e "${RED}.  INSTALLATION FAILED${NC}"
-    echo -e "${RED}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${RED}══════════════════════════════════════════${NC}"
     echo ""
     echo -e "${RED}Error: $message${NC}"
     echo ""
@@ -206,9 +206,9 @@ pre_install_checks() {
     # If running as root, set up the openclaw user
     if [ "$EUID" -eq 0 ]; then
         echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo -e "${YELLOW}.  RUNNING AS ROOT - SETTING UP OPENCLAW USER${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo ""
 
         # Check if user already exists
@@ -546,9 +546,9 @@ harden_ssh() {
     if [ "$has_ssh_keys" = false ]; then
         log_warning "No SSH keys found! Skipping SSH hardening to avoid lockout."
         echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo -e "${YELLOW}.  SSH HARDENING SKIPPED${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo ""
         echo -e "SSH keys are required for key-only authentication."
         echo -e "To set up SSH keys:"
@@ -911,9 +911,9 @@ run_onboarding() {
     fi
 
     echo ""
-    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}══════════════════════════════════════════${NC}"
     echo -e "${CYAN}.  ONBOARDING${NC}"
-    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}══════════════════════════════════════════${NC}"
     echo ""
     echo -e "OpenClaw onboarding will configure:"
     echo -e "  • API provider and key (Anthropic, OpenAI, etc.)"
@@ -1109,9 +1109,9 @@ start_and_verify_gateway() {
     if ! systemctl --user list-unit-files | grep -q "openclaw-gateway.service"; then
         log_warning "Gateway service file not found. Onboarding may not have completed successfully."
         echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo -e "${YELLOW}.  GATEWAY SERVICE NOT FOUND${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo ""
         echo -e "To complete setup, run:"
         echo -e "  ${CYAN}openclaw onboard --install-daemon${NC}"
@@ -1142,9 +1142,9 @@ start_and_verify_gateway() {
         log_warning "Gateway service not active. Status:"
         systemctl --user status openclaw-gateway >>"$LOG_FILE" 2>&1
         echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo -e "${YELLOW}.  GATEWAY SERVICE NOT ACTIVE${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo ""
         echo -e "To start the gateway manually:"
         echo -e "  ${CYAN}systemctl --user start openclaw-gateway${NC}"
@@ -1197,9 +1197,9 @@ start_and_verify_gateway() {
     else
         log_warning "Gateway service is active but health check failed"
         echo ""
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo -e "${YELLOW}.  GATEWAY MAY NOT BE FULLY READY${NC}"
-        echo -e "${YELLOW}╶════════════════════════════════════════════════════════════════════════════${NC}"
+        echo -e "${YELLOW}══════════════════════════════════════════${NC}"
         echo ""
         echo -e "Check status with: ${CYAN}systemctl --user status openclaw-gateway${NC}"
         echo -e "View logs with:    ${CYAN}journalctl --user -u openclaw-gateway -f${NC}"
@@ -1238,9 +1238,9 @@ restrict_to_tailscale() {
     fi
 
     echo ""
-    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}══════════════════════════════════════════${NC}"
     echo -e "${CYAN}.  TAILSCALE-ONLY ACCESS MODE${NC}"
-    echo -e "${CYAN}╶════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}══════════════════════════════════════════${NC}"
     echo ""
     echo -e "Restrict SSH and gateway access to Tailscale network only."
     echo -e "This blocks public internet access to these services."
@@ -1331,9 +1331,9 @@ persist_logs() {
 
 display_summary() {
     echo ""
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}══════════════════════════════════════════${NC}"
     echo -e "${GREEN}.  INSTALLATION COMPLETE${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}══════════════════════════════════════════${NC}"
     echo ""
 
     # Show installed versions
@@ -1373,10 +1373,10 @@ display_summary() {
             echo -e "  ${GREEN}✓${NC} OpenClaw: ${BLUE}Configured with API key${NC}"
         else
             echo ""
-            echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Daemon installed, API key required${NC}"
+            echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not yet onboarded${NC}"
             echo -e "${YELLOW}  Run:${NC}"
             echo -e "${YELLOW}    su - openclaw${NC}"
-            echo -e "${YELLOW}.   cd ~/installer${NC}"
+            echo -e "${YELLOW}    cd ~/installer/server${NC}"
             echo -e "${YELLOW}    make tailscale (optional)${NC}"
             echo -e "${YELLOW}    make onboard${NC}"
             echo -e "${YELLOW}    make webui${NC}"
@@ -1385,12 +1385,10 @@ display_summary() {
         echo ""
         echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not yet onboarded${NC}"
         echo ""
-        echo -e "${BOLD}To complete setup:${NC}"
-        echo -e "  ${CYAN}su - openclaw${NC}"
-        echo -e "  ${CYAN}cd ~/installer${NC}"
-        echo -e "  ${CYAN}make tailscale (optional)${NC}"
-        echo -e "  ${CYAN}make onboard${NC}"
-        echo -e "  ${CYAN}make webui${NC}"
+        echo -e "${BOLD}To complete setup (run from docker/ directory on host):${NC}"
+        echo -e "  ${CYAN}make tailscale${NC}     # Optional: Authenticate Tailscale"
+        echo -e "  ${CYAN}make shell${NC}        # Enter container"
+        echo -e "  ${CYAN}make onboard${NC}      # Run onboarding"
         echo ""
     fi
 

@@ -22,7 +22,7 @@ install: down up
 	@echo "Waiting for systemd to be ready..."
 	@sleep 15
 	@echo "Running installation script (existing config will be preserved)..."
-	docker compose exec -T ubuntu bash -c "cd /mnt && OPENCLAW_ENV=docker ./install.sh"
+	docker compose exec -T ubuntu bash -c "cd /mnt && OPENCLAW_ENV=docker bash install.sh"
 
 up:
 	@mkdir -p ./.disk/{state,logs,home} || true
@@ -40,7 +40,7 @@ wipe: down
 	@echo "Wipe complete. Next 'make install' will be a fresh start."
 
 shell:
-	docker compose exec ubuntu bash -c "export XDG_RUNTIME_DIR=/run/user/0; exec bash"
+	docker compose exec ubuntu bash -c "export XDG_RUNTIME_DIR=/run/user/0; su - openclaw"
 
 tailscale:
 	@echo "Starting Tailscale daemon in container..."

@@ -33,7 +33,7 @@ jobs:
       - name: Run installation script
         run: |
           cd docker
-          docker compose exec -T ubuntu bash -c "cd /mnt && ./install.sh"
+          docker compose exec -T ubuntu bash -c "cd /mnt && bash install.sh"
 
       - name: Check OpenClaw installation
         run: |
