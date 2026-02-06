@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.3.2"
+_VER="0.3.3"
 
 # ============================================================================
 # CONSTANTS
@@ -1381,7 +1381,8 @@ display_summary() {
         echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not configured${NC}"
         echo ""
         echo -e "${BOLD}To complete setup:${NC}"
-        echo -e "  ${CYAN}cd ~/openclaw/installer && make onboard${NC}"
+        echo -e "  ${CYAN}su - openclaw${NC}"
+        echo -e "  ${CYAN}cd ~/installer && make onboard${NC}"
         echo ""
     fi
 

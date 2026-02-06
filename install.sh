@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # ╔══════════════════════════════════════════════════════════════════════════╗
-# ║                    OpenClaw Bootstrap Script                          ║
+# ║                    OpenClaw Bootstrap Script                             ║
 # ║                    for Ubuntu VPS with Tailscale                         ║
 # ╚══════════════════════════════════════════════════════════════════════════╝
 #
@@ -24,8 +24,8 @@ readonly NC='\033[0m'
 
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║                  OpenClaw Bootstrap Script                       ║"
-echo "║                  for Ubuntu VPS with Tailscale            v0.1.4 ║"
+echo "║                  OpenClaw Install Script                         ║"
+echo "║               for Ubuntu VPS with Tailscale              v0.3.3  ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
