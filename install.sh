@@ -25,7 +25,7 @@ readonly NC='\033[0m'
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║                  OpenClaw Install Script                         ║"
-echo "║               for Ubuntu VPS with Tailscale              v0.3.3  ║"
+echo "║               for Ubuntu VPS with Tailscale              v0.3.4  ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
