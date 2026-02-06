@@ -25,7 +25,7 @@ readonly NC='\033[0m'
 echo -e "${CYAN}"
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║                  OpenClaw Bootstrap Script                       ║"
-echo "║                  for Ubuntu VPS with Tailscale            v0.1.3 ║"
+echo "║                  for Ubuntu VPS with Tailscale            v0.1.4 ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
 
@@ -50,7 +50,7 @@ else
     echo -e "${GREEN}✓${NC} User '$OPENCLAW_USER' created with passwordless sudo"
 fi
 
-# Step 2: Clone or update the repository
+# Step 2: Clone the repository
 echo ""
 echo -e "${CYAN}▶${NC} Fetching OpenClaw installer..."
 
@@ -58,13 +58,12 @@ echo -e "${CYAN}▶${NC} Fetching OpenClaw installer..."
 git config --global --add safe.directory "$REPO_DIR" >/dev/null 2>&1 || true
 
 # Force fresh clone to avoid broken states
-# This is safer than trying to recover a potentially broken repo
 rm -rf "$REPO_DIR" 2>/dev/null || true
 mkdir -p "$REPO_DIR"
 chown -R "$OPENCLAW_USER:$OPENCLAW_USER" "/home/$OPENCLAW_USER"
 
 if git clone "$REPO_URL" "$REPO_DIR" >/dev/null 2>&1; then
-    echo -e "${GREEN}✓${NC} Repository cloned to $REPO_DIR (version: $(grep '^# Version' "$REPO_DIR/install.sh" 2>/dev/null | head -1 | awk '{print $NF}'))"
+    echo -e "${GREEN}✓${NC} Repository cloned to $REPO_DIR"
 else
     echo -e "${RED}✗${NC} Failed to clone repository"
     echo "Please ensure git is installed: apt install -y git"
@@ -76,4 +75,6 @@ echo ""
 echo -e "${CYAN}▶${NC} Running OpenClaw installer..."
 echo -e "${CYAN}══════════════════════════════════════════════════════════════════════════════${NC}"
 echo ""
+
+# Switch to openclaw user and run installer
 exec su - "$OPENCLAW_USER" -c "cd \"$REPO_DIR\" && OPENCLAW_REEXEC=1 ./installer.sh"

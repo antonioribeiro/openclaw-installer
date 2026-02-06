@@ -39,7 +39,7 @@ set -euo pipefail
 # VERSION
 # ============================================================================
 
-_VER="0.4.0"
+_VER="0.3.2"
 
 # ============================================================================
 # CONSTANTS
@@ -1444,20 +1444,6 @@ main() {
     display_summary
 
     log_info "Installation completed successfully"
-
-    # If running as root and OpenClaw not configured, remind user to switch
-    if [ "$EUID" -eq 0 ] && [ "$(whoami)" != "openclaw" ] && [ ! -f "$OPENCLAW_CONFIG_FILE" ]; then
-        echo ""
-        echo -e "${BOLD}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo -e "${BOLD}.  NEXT STEPS${NC}"
-        echo -e "${BOLD}╶════════════════════════════════════════════════════════════════════════════${NC}"
-        echo ""
-        echo -e "Switch to the openclaw user and run onboarding:"
-        echo ""
-        echo -e "  ${CYAN}su - openclaw${NC}"
-        echo -e "  ${CYAN}cd ~/openclaw/installer && make onboard${NC}"
-        echo ""
-    fi
 }
 
 main "$@"
