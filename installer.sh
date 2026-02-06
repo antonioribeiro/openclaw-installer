@@ -1403,22 +1403,19 @@ display_summary() {
 # ============================================================================
 
 main() {
-    # Skip banner on re-exec (after user switch)
-    if [ "${OPENCLAW_REEXEC:-0}" != "1" ]; then
-        echo -e "${CYAN}"
-        echo "╔══════════════════════════════════════════════════════════════════╗"
-        echo "║                   OpenClaw Installation Script                   ║"
-        echo "║                   for Ubuntu VPS with Tailscale                  ║"
-        echo "║                           Version $_VER                          ║"
-        echo "╚══════════════════════════════════════════════════════════════════╝"
-        echo -e "${NC}"
+    echo -e "${CYAN}"
+    echo "╔══════════════════════════════════════════════════════════════════╗"
+    echo "║                   OpenClaw Installation Script                   ║"
+    echo "║                   for Ubuntu VPS with Tailscale                  ║"
+    echo "║                           Version $_VER                          ║"
+    echo "╚══════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
 
-        if [ "$HARDENED_MODE" = true ]; then
-            echo -e "${YELLOW}Running in HARDENED mode${NC}"
-            echo ""
-        fi
+    if [ "$HARDENED_MODE" = true ]; then
+        echo -e "${YELLOW}Running in HARDENED mode${NC}"
         echo ""
     fi
+    echo ""
 
     setup_logging
     log_info "Starting OpenClaw installation..."

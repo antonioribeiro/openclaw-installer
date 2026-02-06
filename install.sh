@@ -22,13 +22,6 @@ readonly CYAN='\033[0;36m'
 readonly RED='\033[0;31m'
 readonly NC='\033[0m'
 
-echo -e "${CYAN}"
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║                  OpenClaw Install Script                         ║"
-echo "║               for Ubuntu VPS with Tailscale              v0.3.4  ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
-
 # Must run as root
 if [ "$EUID" -ne 0 ]; then
     echo -e "${RED}Error: This script must be run as root${NC}"
@@ -77,4 +70,4 @@ echo -e "${CYAN}═════════════════════�
 echo ""
 
 # Switch to openclaw user and run installer
-exec su - "$OPENCLAW_USER" -c "cd \"$REPO_DIR\" && OPENCLAW_REEXEC=1 ./installer.sh"
+exec su - "$OPENCLAW_USER" -c "cd \"$REPO_DIR\" && ./installer.sh"
