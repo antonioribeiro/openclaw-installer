@@ -1374,15 +1374,19 @@ display_summary() {
         else
             echo ""
             echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Daemon installed, API key required${NC}"
-            echo -e "${YELLOW}  Run: openclaw configure --section anthropic${NC}"
+            echo -e "${YELLOW}  Run:${NC}"
+            echo -e "${YELLOW}    su - openclaw${NC}"
+            echo -e "${YELLOW}.   cd ~/installer${NC}"
+            echo -e "${YELLOW}    make onboard${NC}"
         fi
     else
         echo ""
-        echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not configured${NC}"
+        echo -e "  ${YELLOW}⚠${NC} OpenClaw: ${YELLOW}Not yet onboarded${NC}"
         echo ""
         echo -e "${BOLD}To complete setup:${NC}"
         echo -e "  ${CYAN}su - openclaw${NC}"
-        echo -e "  ${CYAN}cd ~/installer && make onboard${NC}"
+        echo -e "  ${CYAN}cd ~/installer${NC}"
+        echo -e "  ${CYAN}make onboard${NC}"
         echo ""
     fi
 
