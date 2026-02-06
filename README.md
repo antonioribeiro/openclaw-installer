@@ -1,9 +1,21 @@
-# OpenClaw Installation Script for Ubuntu VPS
+<br>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Tests](https://github.com/antonioribeiro/openclaw-installer/actions/workflows/test.yml/badge.svg)](https://github.com/antonioribeiro/openclaw-installer/actions/workflows/test.yml)
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%7C24.04-orange)](https://ubuntu.com/)
-[![Docker](https://img.shields.io/badge/Docker-Supported-blue)](https://www.docker.com/)
+<span style="display:block;text-align:center">
+  <img src="docs/banner.png" alt="OpenClaw Easy Installer" width="100%"/>
+</span>
+
+<span style="display:block;text-align:center">
+
+  # OpenClaw Installation Script for Ubuntu VPS
+
+  [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+  [![Tests](https://github.com/antonioribeiro/openclaw-installer/actions/workflows/test.yml/badge.svg)](https://github.com/antonioribeiro/openclaw-installer/actions/workflows/test.yml)
+  [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04%7C24.04-orange)](https://ubuntu.com/)
+  [![Docker](https://img.shields.io/badge/Docker-Supported-blue)](https://www.docker.com/)
+
+</span>
+
+<br>
 
 A production-ready, idempotent installer that sets up **OpenClaw** with security hardening, automatic updates, and comprehensive logging.
 
